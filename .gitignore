@@ -1,0 +1,47 @@
+# 编译输出
+reset
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# 测试文件
+*.test
+*.out
+
+# Go 工作目录
+/vendor/
+/Godeps/
+
+# 数据文件（包含敏感信息）
+data/
+logs/
+
+# 文档（可能包含测试数据）
+docs/
+
+# 配置文件（包含 API Key）
+.env
+.env.local
+*.env.backup
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 临时文件
+*.tmp
+*.log
+*.lock
+
+# Docker
+.dockerignore

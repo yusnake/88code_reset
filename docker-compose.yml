@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  reset-scheduler:
+    build: .
+    container_name: 88code_reset_scheduler
+    restart: unless-stopped
+    environment:
+      # 方式1: 直接设置环境变量
+      - API_KEY=${API_KEY}
+      # 或者从 .env 文件自动加载
+    env_file:
+      - .env
+    volumes:
+      # 持久化数据目录
+      - ./data:/app/data
+      # 持久化日志目录
+      - ./logs:/app/logs
+    command: ["-mode=run", "-datadir=/app/data", "-logdir=/app/logs"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 可选：用于测试的临时容器
+  reset-test:
+    build: .
+    container_name: 88code_reset_test
+    environment:
+      - API_KEY=${API_KEY}
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    command: ["-mode=test", "-datadir=/app/data", "-logdir=/app/logs"]
+    profiles:
+      - test
