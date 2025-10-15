@@ -1,7 +1,4 @@
 # 88code 订阅自动重置工具
-
-[![CI](https://github.com/yourusername/88code_reset/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/88code_reset/actions/workflows/ci.yml)
-[![Docker Build](https://github.com/yourusername/88code_reset/actions/workflows/docker-build.yml/badge.svg)](https://github.com/yourusername/88code_reset/actions/workflows/docker-build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 这是一个基于 Go 语言开发的自动化工具，用于在每天的固定时间自动重置 88code.org 订阅积分。支持 FREE、PRO、PLUS 等多种套餐类型，并具有 PAYGO 保护机制。
@@ -451,15 +448,10 @@ MIT License
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
 5. 创建 Pull Request
 
-## 相关文档
+## 相关链接
 
-- [README.md](README.md) - 项目文档（本文件）
-- [docs/QUICKSTART.md](docs/QUICKSTART.md) - 快速开始指南
-- [docs/USAGE.md](docs/USAGE.md) - 详细使用说明
-- [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md) - 项目总结
-- [docs/GITHUB_ACTIONS.md](docs/GITHUB_ACTIONS.md) - GitHub Actions 配置指南
-- [docs/FILES.md](docs/FILES.md) - 文件清单
-- [docs/README.md](docs/README.md) - 文档索引
+- [GitHub Issues](https://github.com/Vulpecula-Studio/88code_reset/issues) - 问题反馈
+- [GitHub Actions](https://github.com/Vulpecula-Studio/88code_reset/actions) - CI/CD 状态
 
 ## 免责声明
 
