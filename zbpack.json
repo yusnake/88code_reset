@@ -1,0 +1,4 @@
+{
+  "build_command": "go build -o app ./cmd/reset/main.go",
+  "start_command": "./app -mode=run"
+}

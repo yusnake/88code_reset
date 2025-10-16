@@ -1,5 +1,7 @@
 # 88code 订阅自动重置工具
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/LHHR21)
 
 这是一个基于 Go 语言开发的自动化工具，用于在每天的固定时间自动重置 88code.org 订阅积分。支持 FREE、PRO、PLUS 等多种套餐类型，并具有 PAYGO 保护机制。
 
@@ -20,6 +22,7 @@
 ### 部署方式
 - ✅ **预编译二进制**: 支持多平台（Linux、macOS、Windows）和多架构（amd64、arm64、armv7）
 - ✅ **Docker 镜像**: 多架构镜像（amd64、arm64）
+- ✅ **Zeabur 一键部署**: 无需服务器，一键部署到云端
 - ✅ **Systemd 服务**: Linux 系统服务支持，开机自启
 - ✅ **灵活配置**: 环境变量和 .env 文件配置
 
@@ -38,7 +41,27 @@
 - （可选）Go 1.21+ 用于从源码编译
 - （可选）Docker 用于容器化部署
 
-### 方式 1: 使用预编译二进制文件（推荐）
+### 方式 1: Zeabur 一键部署（最简单）
+
+[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/LHHR21)
+
+点击上方按钮一键部署到 Zeabur：
+
+1. 点击 "Deploy on Zeabur" 按钮
+2. 登录或注册 Zeabur 账号
+3. 填写环境变量：
+   - `API_KEY`: 你的 88code.org API Key（必填）
+   - `TARGET_PLANS`: 目标套餐类型，默认 `FREE`
+   - `TZ`: 时区设置，默认 `Asia/Shanghai`
+4. 点击部署，等待完成
+
+**优势：**
+- ✅ 无需服务器，完全托管
+- ✅ 自动重启和健康检查
+- ✅ 零配置，开箱即用
+- ✅ 免费额度足够使用
+
+### 方式 2: 使用预编译二进制文件
 
 从 [Releases 页面](https://github.com/Vulpecula-Studio/88code_reset/releases) 下载适合你系统的版本。
 
@@ -64,7 +87,7 @@ EOF
 ./88code_reset-linux-amd64 -mode=run
 ```
 
-### 方式 2: 从源码运行
+### 方式 3: 从源码运行
 
 需要 Go 1.21+
 
@@ -80,7 +103,7 @@ go run cmd/reset/main.go -mode=test
 go run cmd/reset/main.go -mode=run
 ```
 
-### 方式 3: Docker 部署（推荐）
+### 方式 4: Docker 部署
 
 **Docker Compose**（最简单）
 ```bash
