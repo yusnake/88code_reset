@@ -5,6 +5,7 @@
 
 ## 功能特性
 
+### 核心功能
 - ✅ **多套餐支持**: 支持 FREE、PRO、PLUS 或自定义套餐名称
 - ✅ **PAYGO 保护**: 自动检测并拒绝重置 PAYGO 类型订阅，确保安全
 - ✅ **定期监控**: 每小时检查订阅状态，及时发现问题
@@ -15,9 +16,18 @@
 - ✅ **状态持久化**: 完整记录账号信息和执行状态
 - ✅ **并发保护**: 防重复执行的锁机制
 - ✅ **详细日志**: 完善的日志记录系统
-- ✅ **Docker 支持**: 多架构镜像（amd64, arm64, arm/v7）
+
+### 部署方式
+- ✅ **预编译二进制**: 支持多平台（Linux、macOS、Windows）和多架构（amd64、arm64、armv7）
+- ✅ **Docker 镜像**: 多架构镜像（amd64、arm64）
+- ✅ **Systemd 服务**: Linux 系统服务支持，开机自启
 - ✅ **灵活配置**: 环境变量和 .env 文件配置
+
+### CI/CD
 - ✅ **自动构建**: GitHub Actions 自动构建和发布
+- ✅ **多平台发布**: 自动编译并发布到 GitHub Releases
+- ✅ **Docker 发布**: 自动构建并发布到 GitHub Container Registry
+- ✅ **校验和验证**: 自动生成 SHA256 校验和
 
 ## 项目结构
 
@@ -53,10 +63,107 @@
 
 ### 前置要求
 
-- Go 1.21+ 或 Docker
 - 有效的 88code.org API Key
+- （可选）Go 1.21+ 用于从源码编译
+- （可选）Docker 用于容器化部署
 
-### 方式 1: 直接运行
+### 方式 1: 使用预编译二进制文件（推荐）
+
+#### 下载二进制文件
+
+从 [Releases 页面](https://github.com/yourusername/88code_reset/releases) 下载适合你系统的二进制文件：
+
+**Linux (amd64)**
+```bash
+wget https://github.com/yourusername/88code_reset/releases/latest/download/88code_reset-linux-amd64.tar.gz
+tar xzf 88code_reset-linux-amd64.tar.gz
+chmod +x 88code_reset-linux-amd64
+```
+
+**Linux (arm64)**
+```bash
+wget https://github.com/yourusername/88code_reset/releases/latest/download/88code_reset-linux-arm64.tar.gz
+tar xzf 88code_reset-linux-arm64.tar.gz
+chmod +x 88code_reset-linux-arm64
+```
+
+**Linux (armv7)** - 适用于树莓派等设备
+```bash
+wget https://github.com/yourusername/88code_reset/releases/latest/download/88code_reset-linux-armv7.tar.gz
+tar xzf 88code_reset-linux-armv7.tar.gz
+chmod +x 88code_reset-linux-armv7
+```
+
+**macOS (Intel)**
+```bash
+wget https://github.com/yourusername/88code_reset/releases/latest/download/88code_reset-darwin-amd64.tar.gz
+tar xzf 88code_reset-darwin-amd64.tar.gz
+chmod +x 88code_reset-darwin-amd64
+```
+
+**macOS (Apple Silicon)**
+```bash
+wget https://github.com/yourusername/88code_reset/releases/latest/download/88code_reset-darwin-arm64.tar.gz
+tar xzf 88code_reset-darwin-arm64.tar.gz
+chmod +x 88code_reset-darwin-arm64
+```
+
+**Windows (amd64)**
+```powershell
+# 从 Releases 页面下载 88code_reset-windows-amd64.zip
+# 解压后运行 88code_reset-windows-amd64.exe
+```
+
+#### 验证下载（可选）
+
+```bash
+# 下载校验和文件
+wget https://github.com/yourusername/88code_reset/releases/latest/download/SHA256SUMS
+
+# 验证文件完整性
+sha256sum -c SHA256SUMS 2>&1 | grep OK
+```
+
+#### 配置和运行
+
+1. **创建配置文件**
+```bash
+# 创建 .env 文件
+cat > .env << EOF
+API_KEY=your_api_key_here
+TARGET_PLANS=FREE
+TZ=Asia/Shanghai
+EOF
+```
+
+2. **测试连接**
+```bash
+# Linux/macOS
+./88code_reset-linux-amd64 -mode=test
+
+# Windows
+88code_reset-windows-amd64.exe -mode=test
+```
+
+3. **启动调度器**
+```bash
+# Linux/macOS
+./88code_reset-linux-amd64 -mode=run
+
+# Windows
+88code_reset-windows-amd64.exe -mode=run
+```
+
+4. **后台运行（Linux/macOS）**
+```bash
+# 使用 nohup
+nohup ./88code_reset-linux-amd64 -mode=run > output.log 2>&1 &
+
+# 使用 systemd（推荐）
+# 参见下方的 "设置 Systemd 服务" 部分
+```
+
+### 方式 2: 从源码编译
 
 1. **克隆项目**
 ```bash
@@ -79,7 +186,9 @@ go run cmd/reset/main.go -mode=test
 go run cmd/reset/main.go -mode=run
 ```
 
-### 方式 2: GitHub Container Registry 镜像（最简单）
+### 方式 3: Docker 镜像部署
+
+#### 使用 GitHub Container Registry 镜像
 
 使用预构建的 Docker 镜像：
 
@@ -102,7 +211,7 @@ docker run -d \
   ghcr.io/yourusername/88code_reset:latest -mode=run
 ```
 
-### 方式 3: Docker Compose（推荐）
+#### 使用 Docker Compose（推荐）
 
 1. **配置 API Key**
 ```bash
@@ -382,11 +491,96 @@ docker-compose restart reset-scheduler
 docker-compose exec reset-scheduler sh
 ```
 
+## 设置 Systemd 服务（Linux）
+
+将程序设置为系统服务，实现开机自启和自动重启。
+
+1. **创建服务文件**
+```bash
+sudo nano /etc/systemd/system/88code-reset.service
+```
+
+2. **编辑服务配置**
+```ini
+[Unit]
+Description=88code Subscription Auto Reset Service
+After=network.target
+
+[Service]
+Type=simple
+User=your_username
+WorkingDirectory=/path/to/88code_reset
+ExecStart=/path/to/88code_reset/88code_reset-linux-amd64 -mode=run
+Restart=always
+RestartSec=10
+StandardOutput=append:/path/to/88code_reset/logs/service.log
+StandardError=append:/path/to/88code_reset/logs/service.log
+
+# 环境变量（可选，也可以使用 .env 文件）
+Environment="API_KEY=your_api_key_here"
+Environment="TZ=Asia/Shanghai"
+
+[Install]
+WantedBy=multi-user.target
+```
+
+3. **启用并启动服务**
+```bash
+# 重载 systemd 配置
+sudo systemctl daemon-reload
+
+# 启用服务（开机自启）
+sudo systemctl enable 88code-reset
+
+# 启动服务
+sudo systemctl start 88code-reset
+
+# 查看服务状态
+sudo systemctl status 88code-reset
+
+# 查看服务日志
+sudo journalctl -u 88code-reset -f
+```
+
+4. **管理服务**
+```bash
+# 停止服务
+sudo systemctl stop 88code-reset
+
+# 重启服务
+sudo systemctl restart 88code-reset
+
+# 禁用服务
+sudo systemctl disable 88code-reset
+```
+
 ## 开发说明
 
 ### 编译
+
+**编译当前平台**
 ```bash
 go build -o reset cmd/reset/main.go
+```
+
+**交叉编译**
+```bash
+# Linux amd64
+GOOS=linux GOARCH=amd64 go build -o reset-linux-amd64 cmd/reset/main.go
+
+# Linux arm64
+GOOS=linux GOARCH=arm64 go build -o reset-linux-arm64 cmd/reset/main.go
+
+# macOS arm64 (Apple Silicon)
+GOOS=darwin GOARCH=arm64 go build -o reset-darwin-arm64 cmd/reset/main.go
+
+# Windows amd64
+GOOS=windows GOARCH=amd64 go build -o reset-windows-amd64.exe cmd/reset/main.go
+```
+
+**优化编译（减小体积）**
+```bash
+CGO_ENABLED=0 go build -a -ldflags="-s -w" -o reset cmd/reset/main.go
 ```
 
 ### 运行测试
@@ -481,23 +675,45 @@ A: 可以，但要确保 JSON 格式正确。通常不建议手动修改。
 
 本项目使用 GitHub Actions 实现自动化构建和发布：
 
-- **自动测试**: 每次推送代码都会运行 CI 测试
-- **Docker 构建**: 自动构建多架构 Docker 镜像（amd64, arm64, arm/v7）
-- **自动发布**: 推送到 GitHub Container Registry
+### 支持的平台和架构
 
-### 配置 GitHub Actions
+**预编译二进制文件** (通过 GitHub Releases 发布)
+- Linux: amd64, arm64, armv7
+- macOS: amd64 (Intel), arm64 (Apple Silicon)
+- Windows: amd64, arm64
 
-详细配置步骤请查看 [docs/GITHUB_ACTIONS.md](docs/GITHUB_ACTIONS.md)
+**Docker 镜像** (通过 GitHub Container Registry 发布)
+- linux/amd64
+- linux/arm64
 
-简要步骤：
-1. Fork 本项目到你的 GitHub
-2. 推送代码，GitHub Actions 会自动构建
-3. 镜像会自动发布到 `ghcr.io/yourusername/88code_reset`
+### 自动化流程
 
-无需额外配置 Secrets，使用内置的 `GITHUB_TOKEN` 即可。
+1. **推送标签触发发布**
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
 
-### 使用发布的镜像
+2. **自动构建和发布**
+   - 编译所有平台的二进制文件
+   - 生成 SHA256 校验和
+   - 创建 GitHub Release 并上传文件
+   - 构建多架构 Docker 镜像
+   - 推送到 GitHub Container Registry
 
+3. **无需额外配置**
+   - 使用内置的 `GITHUB_TOKEN`
+   - 无需额外配置 Secrets
+
+### 使用发布的资源
+
+**二进制文件**
+```bash
+# 从 Releases 页面下载
+wget https://github.com/yourusername/88code_reset/releases/latest/download/88code_reset-linux-amd64.tar.gz
+```
+
+**Docker 镜像**
 ```bash
 # 使用最新版本
 docker pull ghcr.io/yourusername/88code_reset:latest
@@ -508,6 +724,18 @@ docker pull ghcr.io/yourusername/88code_reset:v1.0.0
 # 指定架构
 docker pull --platform linux/arm64 ghcr.io/yourusername/88code_reset:latest
 ```
+
+### GitHub Actions Workflows
+
+本项目包含两个主要的 workflow：
+
+1. **[docker.yml](.github/workflows/docker.yml)** - Docker 镜像构建和发布
+   - 触发条件: 推送到 main 分支、推送标签、手动触发
+   - 输出: GitHub Container Registry 镜像
+
+2. **[release.yml](.github/workflows/release.yml)** - 二进制文件编译和发布
+   - 触发条件: 推送 v*.*.* 标签、手动触发
+   - 输出: GitHub Releases 二进制文件和校验和
 
 ## 许可证
 
