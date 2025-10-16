@@ -8,7 +8,8 @@
 - ✅ **多套餐支持**: 支持 FREE、PRO、PLUS 或自定义套餐名称
 - ✅ **PAYGO 保护**: 自动检测并拒绝重置 PAYGO 类型订阅，确保安全
 - ✅ **定期监控**: 每小时检查订阅状态，及时发现问题
-- ✅ **自动重置**: 每天 18:50 和 23:55（北京时间）自动执行重置
+- ✅ **自动重置**: 每天 18:50 和 23:55 自动执行重置
+- ✅ **时区配置**: 内置时区设置，默认 UTC+8，支持自定义时区
 - ✅ **智能检查**: 仅在 `resetTimes >= 2` 时执行重置
 - ✅ **间隔控制**: 两次重置至少间隔 5 小时
 - ✅ **状态持久化**: 完整记录账号信息和执行状态
@@ -165,9 +166,9 @@ go run cmd/reset/main.go -mode=test
 go run cmd/reset/main.go -mode=run
 ```
 
-重置时间：
-- **第一次重置**: 每天 18:50（北京时间）
-- **第二次重置**: 每天 23:55（北京时间）
+重置时间（基于配置的时区，默认为北京时间 UTC+8）：
+- **第一次重置**: 每天 18:50
+- **第二次重置**: 每天 23:55
 
 ### 3. 手动重置模式 (manual)
 
@@ -190,6 +191,7 @@ go run cmd/reset/main.go -mode=manual -yes
 | `-apikey` | - | API Key（可选） |
 | `-baseurl` | `https://www.88code.org` | API Base URL |
 | `-plans` | `FREE` | 目标套餐名称，多个用逗号分隔（如：FREE,PRO,PLUS） |
+| `-timezone` | `Asia/Shanghai` | 时区设置（如：Asia/Shanghai, Asia/Hong_Kong, UTC） |
 | `-datadir` | `./data` | 数据目录 |
 | `-logdir` | `./logs` | 日志目录 |
 | `-yes` | `false` | 跳过确认提示（仅用于 manual 模式） |
@@ -205,6 +207,12 @@ go run cmd/reset/main.go -mode=run -plans=PRO
 
 # 重置多个套餐
 go run cmd/reset/main.go -mode=run -plans=FREE,PRO,PLUS
+
+# 使用自定义时区
+go run cmd/reset/main.go -mode=run -timezone=Asia/Tokyo
+
+# 使用 UTC 时区
+go run cmd/reset/main.go -mode=run -timezone=UTC
 ```
 
 ## 配置文件
@@ -223,11 +231,29 @@ BASE_URL=https://www.88code.org
 TARGET_PLANS=FREE
 # TARGET_PLANS=FREE,PRO
 # TARGET_PLANS=PLUS
+
+# 时区设置（可选，默认为 Asia/Shanghai UTC+8）
+# 支持标准时区名称，用于控制重置时间
+# 示例：
+TZ=Asia/Shanghai          # 北京/上海时区 (UTC+8)
+# TZ=Asia/Hong_Kong       # 香港时区 (UTC+8)
+# TZ=Asia/Tokyo           # 东京时区 (UTC+9)
+# TZ=America/New_York     # 纽约时区 (UTC-5/-4)
+# TZ=Europe/London        # 伦敦时区 (UTC+0/+1)
+# TZ=UTC                  # 世界协调时
+#
+# 或使用 TIMEZONE 变量
+# TIMEZONE=Asia/Shanghai
+#
+# 默认重置时间为北京时间：
+# - 第一次: 18:50
+# - 第二次: 23:55
 ```
 
 支持的格式：
 - `API_KEY=xxx` 或 `api-key=xxx`
 - `TARGET_PLANS=xxx` 或通过命令行参数 `-plans=xxx`
+- `TZ=xxx` 或 `TIMEZONE=xxx` 或通过命令行参数 `-timezone=xxx`
 
 ## 数据文件
 
@@ -373,9 +399,59 @@ go test ./...
 go fmt ./...
 ```
 
+## 时区配置
+
+程序内置时区设置，无需依赖系统或容器时区配置。
+
+### 配置优先级
+
+1. 命令行参数 `-timezone`
+2. 环境变量 `TZ`
+3. 环境变量 `TIMEZONE`
+4. `.env` 文件中的 `TZ` 或 `TIMEZONE`
+5. 默认值 `Asia/Shanghai` (UTC+8)
+
+### 常用时区示例
+
+```bash
+# 通过命令行设置
+go run cmd/reset/main.go -mode=run -timezone=Asia/Tokyo
+
+# 通过环境变量设置
+export TZ=Asia/Hong_Kong
+go run cmd/reset/main.go -mode=run
+
+# 通过 .env 文件设置
+echo "TZ=America/New_York" >> .env
+go run cmd/reset/main.go -mode=run
+```
+
+### Docker 时区配置
+
+```bash
+# docker run 方式
+docker run -d \
+  -e API_KEY=your_key \
+  -e TZ=Asia/Tokyo \
+  ghcr.io/yourusername/88code_reset:latest -mode=run
+
+# docker-compose.yml 方式
+environment:
+  - API_KEY=88_xxxxxxxxxxxx
+  - TZ=Asia/Hong_Kong
+```
+
+### 重置时间说明
+
+默认重置时间基于配置的时区：
+- **第一次重置**: 18:50
+- **第二次重置**: 23:55
+
+例如，如果设置为 `Asia/Tokyo` (UTC+9)，则重置时间为东京时间 18:50 和 23:55。
+
 ## 注意事项
 
-1. **时区设置**: 确保系统时区或 Docker 容器时区设置为北京时间
+1. **时区设置**: 使用内置时区配置，无需修改系统或容器时区
 2. **API 限制**: 遵守 88code.org 的 API 使用规范
 3. **数据备份**: 定期备份 `data/` 目录
 4. **日志清理**: 定期清理旧日志文件

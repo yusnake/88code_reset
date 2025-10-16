@@ -40,11 +40,16 @@ type Scheduler struct {
 }
 
 // NewScheduler 创建新的调度器
-func NewScheduler(apiClient *api.Client, storage *storage.Storage) (*Scheduler, error) {
-	// 加载北京时区
-	loc, err := time.LoadLocation(BeijingTimezone)
+func NewScheduler(apiClient *api.Client, storage *storage.Storage, timezone string) (*Scheduler, error) {
+	// 使用配置的时区，如果未设置则使用默认时区
+	if timezone == "" {
+		timezone = BeijingTimezone
+	}
+
+	// 加载时区
+	loc, err := time.LoadLocation(timezone)
 	if err != nil {
-		return nil, fmt.Errorf("加载时区失败: %w", err)
+		return nil, fmt.Errorf("加载时区失败 (%s): %w", timezone, err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

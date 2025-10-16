@@ -14,9 +14,10 @@ import (
 )
 
 const (
-	DefaultBaseURL = "https://www.88code.org"
-	DefaultDataDir = "./data"
-	DefaultLogDir  = "./logs"
+	DefaultBaseURL  = "https://www.88code.org"
+	DefaultDataDir  = "./data"
+	DefaultLogDir   = "./logs"
+	DefaultTimezone = "Asia/Shanghai" // 默认使用北京/上海时区 (UTC+8)
 )
 
 var (
@@ -28,6 +29,7 @@ var (
 	logDir       = flag.String("logdir", DefaultLogDir, "日志目录")
 	skipConfirm  = flag.Bool("yes", false, "跳过确认提示（仅用于手动重置）")
 	planNames    = flag.String("plans", "FREE", "要重置的订阅计划名称，多个用逗号分隔（例如: FREE,PRO,PLUS）")
+	timezone     = flag.String("timezone", "", "时区设置 (例如: Asia/Shanghai, Asia/Hong_Kong, UTC)")
 )
 
 func main() {
@@ -54,8 +56,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 获取时区配置
+	tz := getTimezone(*timezone)
+
 	logger.Info("API Key: %s", maskAPIKey(key))
 	logger.Info("Base URL: %s", *baseURL)
+	logger.Info("时区设置: %s", tz)
 	logger.Info("数据目录: %s", *dataDir)
 	logger.Info("日志目录: %s", *logDir)
 	logger.Info("目标套餐: %s", *planNames)
@@ -81,11 +87,11 @@ func main() {
 	// 根据模式执行不同操作
 	switch *mode {
 	case "test":
-		runTestMode(apiClient, store)
+		runTestMode(apiClient, store, tz)
 	case "run":
-		runSchedulerMode(apiClient, store)
+		runSchedulerMode(apiClient, store, tz)
 	case "manual":
-		runManualMode(apiClient, store)
+		runManualMode(apiClient, store, tz)
 	default:
 		logger.Error("未知的运行模式: %s", *mode)
 		logger.Error("支持的模式: test, run, manual")
@@ -94,7 +100,7 @@ func main() {
 }
 
 // runTestMode 测试模式 - 测试接口连接和获取信息
-func runTestMode(apiClient *api.Client, store *storage.Storage) {
+func runTestMode(apiClient *api.Client, store *storage.Storage, timezone string) {
 	logger.Info("\n========================================")
 	logger.Info("测试模式 - 测试接口连接")
 	logger.Info("========================================\n")
@@ -175,13 +181,13 @@ func runTestMode(apiClient *api.Client, store *storage.Storage) {
 }
 
 // runSchedulerMode 调度器模式 - 启动定时任务
-func runSchedulerMode(apiClient *api.Client, store *storage.Storage) {
+func runSchedulerMode(apiClient *api.Client, store *storage.Storage, timezone string) {
 	logger.Info("\n========================================")
 	logger.Info("调度器模式 - 启动定时任务")
 	logger.Info("========================================\n")
 
 	// 创建调度器
-	sched, err := scheduler.NewScheduler(apiClient, store)
+	sched, err := scheduler.NewScheduler(apiClient, store, timezone)
 	if err != nil {
 		logger.Error("创建调度器失败: %v", err)
 		os.Exit(1)
@@ -195,13 +201,13 @@ func runSchedulerMode(apiClient *api.Client, store *storage.Storage) {
 }
 
 // runManualMode 手动模式 - 手动触发重置（需要确认）
-func runManualMode(apiClient *api.Client, store *storage.Storage) {
+func runManualMode(apiClient *api.Client, store *storage.Storage, timezone string) {
 	logger.Info("\n========================================")
 	logger.Info("手动重置模式")
 	logger.Info("========================================\n")
 
 	// 创建调度器
-	sched, err := scheduler.NewScheduler(apiClient, store)
+	sched, err := scheduler.NewScheduler(apiClient, store, timezone)
 	if err != nil {
 		logger.Error("创建调度器失败: %v", err)
 		os.Exit(1)
@@ -340,4 +346,61 @@ func maskAPIKey(key string) string {
 		return "****"
 	}
 	return key[:8] + "****"
+}
+
+// getTimezone 从多个来源获取时区配置
+func getTimezone(cmdTimezone string) string {
+	// 优先级: 命令行参数 > 环境变量 > .env 文件 > 默认值
+
+	// 1. 命令行参数
+	if cmdTimezone != "" {
+		return cmdTimezone
+	}
+
+	// 2. 环境变量 TZ
+	if envTZ := os.Getenv("TZ"); envTZ != "" {
+		return envTZ
+	}
+
+	// 3. 环境变量 TIMEZONE
+	if envTimezone := os.Getenv("TIMEZONE"); envTimezone != "" {
+		return envTimezone
+	}
+
+	// 4. .env 文件
+	if tzFromEnv := readTimezoneFromEnv(".env"); tzFromEnv != "" {
+		return tzFromEnv
+	}
+
+	// 5. 默认值
+	return DefaultTimezone
+}
+
+// readTimezoneFromEnv 从 .env 文件读取时区配置
+func readTimezoneFromEnv(filename string) string {
+	file, err := os.Open(filename)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// 支持多种格式
+		if strings.HasPrefix(line, "TZ=") {
+			return strings.TrimPrefix(line, "TZ=")
+		}
+		if strings.HasPrefix(line, "TIMEZONE=") {
+			return strings.TrimPrefix(line, "TIMEZONE=")
+		}
+	}
+
+	return ""
 }
