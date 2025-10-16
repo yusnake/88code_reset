@@ -336,7 +336,7 @@ func (s *Scheduler) updateAccountInfo(sub *models.Subscription) {
 }
 
 // updateStatusAfterSuccess 重置成功后更新状态
-func (s *Scheduler) updateStatusAfterSuccess(status *models.ExecutionStatus, resetType string, sub *models.Subscription, resp *models.ResetResponse) {
+func (s *Scheduler) updateStatusAfterSuccess(status *models.ExecutionStatus, resetType string, _ *models.Subscription, resp *models.ResetResponse) {
 	now := time.Now()
 
 	if resetType == "first" {
@@ -368,7 +368,7 @@ func (s *Scheduler) updateStatusAfterFailure(status *models.ExecutionStatus, err
 }
 
 // updateStatusAfterSkip 跳过重置后更新状态
-func (s *Scheduler) updateStatusAfterSkip(status *models.ExecutionStatus, resetType string, sub *models.Subscription, reason string) {
+func (s *Scheduler) updateStatusAfterSkip(status *models.ExecutionStatus, resetType string, _ *models.Subscription, reason string) {
 	// 标记为已执行（即使跳过），避免重复检查
 	now := time.Now()
 
