@@ -227,9 +227,17 @@ func (s *Scheduler) executeReset(resetType string) {
 
 	// 检查 resetTimes
 	logger.Info("当前 resetTimes: %d", freeSub.ResetTimes)
-	if freeSub.ResetTimes < 2 {
-		logger.Warn("resetTimes < 2，今天的重置次数已用完或不足，跳过重置")
-		s.updateStatusAfterSkip(status, resetType, freeSub, "resetTimes不足")
+
+	// 第一次重置（18:50）需要至少2次机会，保证留一次给23:55
+	// 第二次重置（23:55）只需要至少1次机会
+	minRequired := 2
+	if resetType == "second" {
+		minRequired = 1
+	}
+
+	if freeSub.ResetTimes < minRequired {
+		logger.Warn("resetTimes=%d < %d，重置次数不足，跳过重置", freeSub.ResetTimes, minRequired)
+		s.updateStatusAfterSkip(status, resetType, freeSub, fmt.Sprintf("resetTimes不足(需要>=%d)", minRequired))
 		return
 	}
 
