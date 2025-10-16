@@ -1,7 +1,7 @@
 # 88code 订阅自动重置工具
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/LHHR21)
+[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://dash.zeabur.com/templates/SC0K36)
 
 这是一个基于 Go 语言开发的自动化工具，用于在每天的固定时间自动重置 88code.org 订阅积分。支持 FREE、PRO、PLUS 等多种套餐类型，并具有 PAYGO 保护机制。
 
@@ -43,23 +43,32 @@
 
 ### 方式 1: Zeabur 一键部署（最简单）
 
-[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/LHHR21)
+[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://dash.zeabur.com/templates/SC0K36)
 
-点击上方按钮一键部署到 Zeabur：
+**部署步骤：**
 
-1. 点击 "Deploy on Zeabur" 按钮
-2. 登录或注册 Zeabur 账号
-3. 填写环境变量：
-   - `API_KEY`: 你的 88code.org API Key（必填）
-   - `TARGET_PLANS`: 目标套餐类型，默认 `FREE`
-   - `TZ`: 时区设置，默认 `Asia/Shanghai`
-4. 点击部署，等待完成
+1. 点击上方按钮，前往 Zeabur
+2. 登录或注册 Zeabur 账号（支持 GitHub 登录）
+3. 选择部署区域（推荐：Asia - Hong Kong）
+4. 配置环境变量：
+   - `API_KEY`: 你的 88code.org API Key **（必填）**
+   - `TARGET_PLANS`: 目标套餐类型（默认：`FREE`）
+   - `TZ`: 时区设置（默认：`Asia/Shanghai`）
+5. 点击 "Deploy" 部署，等待 1-2 分钟完成
+
+**或者手动从 GitHub 导入：**
+
+1. 前往 [Zeabur Dashboard](https://dash.zeabur.com)
+2. 创建新项目 → 选择 "GitHub" → 选择本仓库
+3. 添加环境变量（同上）
+4. Zeabur 会自动识别 Go 项目并构建部署
 
 **优势：**
 - ✅ 无需服务器，完全托管
 - ✅ 自动重启和健康检查
-- ✅ 零配置，开箱即用
+- ✅ 内置日志查看和监控
 - ✅ 免费额度足够使用
+- ✅ 支持持久化存储（自动挂载 `/app/data` 和 `/app/logs`）
 
 ### 方式 2: 使用预编译二进制文件
 

@@ -1,29 +1,20 @@
 {
   "name": "88code-reset",
-  "icon": "https://raw.githubusercontent.com/Vulpecula-Studio/88code_reset/main/.github/icon.png",
   "description": "88code.org 订阅自动重置工具 - 自动管理你的积分额度",
   "env": {
     "API_KEY": {
-      "description": "88code.org API Key",
+      "description": "你的 88code.org API Key（必填）",
       "required": true
     },
     "TARGET_PLANS": {
-      "description": "目标套餐类型（如 FREE、PRO、PLUS）",
+      "description": "目标套餐类型，例如：FREE、PRO、PLUS",
       "default": "FREE",
       "required": false
     },
     "TZ": {
-      "description": "时区设置（如 Asia/Shanghai）",
+      "description": "时区设置，例如：Asia/Shanghai、Asia/Tokyo",
       "default": "Asia/Shanghai",
       "required": false
     }
-  },
-  "services": [
-    {
-      "name": "88code-reset",
-      "icon": "https://raw.githubusercontent.com/Vulpecula-Studio/88code_reset/main/.github/icon.png",
-      "template": "go",
-      "domainRequired": false
-    }
-  ]
+  }
 }
