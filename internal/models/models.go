@@ -8,6 +8,23 @@ type Config struct {
 	BaseURL string `json:"base_url"`
 }
 
+// AccountConfig 单个账号配置
+type AccountConfig struct {
+	APIKey        string `json:"api_key"`
+	KeyID         string `json:"key_id"`          // API Key 的唯一标识
+	EmployeeID    int    `json:"employee_id"`     // 员工 ID
+	EmployeeName  string `json:"employee_name"`   // 员工名称
+	EmployeeEmail string `json:"employee_email"`  // 员工邮箱
+	Name          string `json:"name"`            // API Key 名称
+	Enabled       bool   `json:"enabled"`         // 是否启用
+	AddedAt       string `json:"added_at"`        // 添加时间
+}
+
+// MultiAccountConfig 多账号配置
+type MultiAccountConfig struct {
+	Accounts []AccountConfig `json:"accounts"`
+}
+
 // SubscriptionPlan 订阅计划
 type SubscriptionPlan struct {
 	ID                     int     `json:"id"`
@@ -51,6 +68,8 @@ type Subscription struct {
 // UsageResponse 用量响应
 type UsageResponse struct {
 	ID                     int            `json:"id"`
+	KeyID                  string         `json:"keyId"`           // API Key 的唯一标识
+	Name                   string         `json:"name"`            // API Key 名称
 	EmployeeID             int            `json:"employeeId"`
 	SubscriptionID         int            `json:"subscriptionId"`
 	SubscriptionName       string         `json:"subscriptionName"`
@@ -82,6 +101,8 @@ type ErrorResponse struct {
 
 // AccountInfo 账号信息（持久化到 account.json）
 type AccountInfo struct {
+	KeyID              string    `json:"key_id"`              // API Key 的唯一标识
+	APIKeyName         string    `json:"api_key_name"`        // API Key 名称
 	EmployeeID         int       `json:"employee_id"`
 	EmployeeName       string    `json:"employee_name"`
 	EmployeeEmail      string    `json:"employee_email"`

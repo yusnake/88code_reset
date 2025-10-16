@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"code88reset/internal/account"
 	"code88reset/internal/api"
 	"code88reset/internal/scheduler"
 	"code88reset/internal/storage"
@@ -22,8 +23,9 @@ const (
 
 var (
 	// 命令行参数
-	mode         = flag.String("mode", "test", "运行模式: test(测试), run(运行调度器), manual(手动重置)")
-	apiKey       = flag.String("apikey", "", "API Key (可选，优先使用环境变量或.env文件)")
+	mode         = flag.String("mode", "test", "运行模式: test(测试), run(自动调度器), manual(手动重置), list(列出历史账号)")
+	apiKey       = flag.String("apikey", "", "API Key，支持单个或多个（逗号分隔），优先使用环境变量或.env文件")
+	apiKeys      = flag.String("apikeys", "", "多个 API Keys（逗号分隔），与 -apikey 等效")
 	baseURL      = flag.String("baseurl", DefaultBaseURL, "API Base URL")
 	dataDir      = flag.String("datadir", DefaultDataDir, "数据目录")
 	logDir       = flag.String("logdir", DefaultLogDir, "日志目录")
@@ -46,20 +48,9 @@ func main() {
 	logger.Info("========================================")
 	logger.Info("运行模式: %s", *mode)
 
-	// 获取 API Key
-	key := getAPIKey(*apiKey)
-	if key == "" {
-		logger.Error("未找到 API Key，请通过以下方式之一提供:")
-		logger.Error("  1. 环境变量: export API_KEY=your_key")
-		logger.Error("  2. .env 文件: api-key=your_key")
-		logger.Error("  3. 命令行参数: -apikey=your_key")
-		os.Exit(1)
-	}
-
 	// 获取时区配置
 	tz := getTimezone(*timezone)
 
-	logger.Info("API Key: %s", maskAPIKey(key))
 	logger.Info("Base URL: %s", *baseURL)
 	logger.Info("时区设置: %s", tz)
 	logger.Info("数据目录: %s", *dataDir)
@@ -72,29 +63,69 @@ func main() {
 		plans[i] = strings.TrimSpace(plan)
 	}
 
-	// 创建存储管理器（需要先创建，因为 API 客户端依赖它）
+	// 创建存储管理器
 	store, err := storage.NewStorage(*dataDir)
 	if err != nil {
 		logger.Error("初始化存储失败: %v", err)
 		os.Exit(1)
 	}
 
-	// 创建 API 客户端
-	apiClient := api.NewClient(*baseURL, key, plans)
-	// 设置存储接口以保存 API 响应
-	apiClient.Storage = store
+	// 创建账号管理器
+	accountMgr := account.NewManager(store, *baseURL)
+
+	// 获取所有 API Keys（统一处理单个和多个）
+	keys := getAllAPIKeys(*apiKey, *apiKeys)
+	if len(keys) == 0 && *mode != "list" {
+		logger.Error("未找到 API Key，请通过以下方式之一提供:")
+		logger.Error("  1. 环境变量: export API_KEY=your_key 或 export API_KEYS=key1,key2")
+		logger.Error("  2. .env 文件: API_KEY=your_key 或 API_KEYS=key1,key2")
+		logger.Error("  3. 命令行参数: -apikey=your_key 或 -apikeys=key1,key2")
+		os.Exit(1)
+	}
 
 	// 根据模式执行不同操作
 	switch *mode {
+	case "list":
+		runListMode(accountMgr)
 	case "test":
+		// 测试模式：只测试第一个 API Key
+		if len(keys) == 0 {
+			logger.Error("测试模式需要至少一个 API Key")
+			os.Exit(1)
+		}
+		logger.Info("测试第一个 API Key: %s", maskAPIKey(keys[0]))
+		apiClient := api.NewClient(*baseURL, keys[0], plans)
+		apiClient.Storage = store
 		runTestMode(apiClient, store, tz)
 	case "run":
-		runSchedulerMode(apiClient, store, tz)
+		// 自动调度器模式：支持单个或多个账号
+		if len(keys) == 1 {
+			// 单账号模式
+			logger.Info("单账号模式 - API Key: %s", maskAPIKey(keys[0]))
+			apiClient := api.NewClient(*baseURL, keys[0], plans)
+			apiClient.Storage = store
+			runSchedulerMode(apiClient, store, tz)
+		} else {
+			// 多账号模式
+			logger.Info("多账号模式 - 检测到 %d 个 API Key", len(keys))
+			runMultiAccountMode(accountMgr, store, keys, plans, tz)
+		}
 	case "manual":
+		// 手动重置模式：只重置第一个账号
+		if len(keys) == 0 {
+			logger.Error("手动重置模式需要至少一个 API Key")
+			os.Exit(1)
+		}
+		if len(keys) > 1 {
+			logger.Warn("检测到 %d 个 API Key，手动模式只会重置第一个账号", len(keys))
+		}
+		logger.Info("手动重置账号 - API Key: %s", maskAPIKey(keys[0]))
+		apiClient := api.NewClient(*baseURL, keys[0], plans)
+		apiClient.Storage = store
 		runManualMode(apiClient, store, tz)
 	default:
 		logger.Error("未知的运行模式: %s", *mode)
-		logger.Error("支持的模式: test, run, manual")
+		logger.Error("支持的模式: test, run, manual, list")
 		os.Exit(1)
 	}
 }
@@ -399,6 +430,221 @@ func readTimezoneFromEnv(filename string) string {
 		}
 		if strings.HasPrefix(line, "TIMEZONE=") {
 			return strings.TrimPrefix(line, "TIMEZONE=")
+		}
+	}
+
+	return ""
+}
+
+
+// runListMode 列表模式 - 列出所有账号
+func runListMode(accountMgr *account.Manager) {
+	logger.Info("\n========================================")
+	logger.Info("账号列表")
+	logger.Info("========================================\n")
+
+	accounts, err := accountMgr.ListAccounts()
+	if err != nil {
+		logger.Error("获取账号列表失败: %v", err)
+		os.Exit(1)
+	}
+
+	if len(accounts) == 0 {
+		logger.Info("暂无账号，请先导入账号:")
+		logger.Info("  go run cmd/reset/main.go -mode=import -apikeys=key1,key2,key3")
+		return
+	}
+
+	total, enabled, disabled, _ := accountMgr.GetAccountCount()
+	logger.Info("账号统计: 总计 %d 个，启用 %d 个，禁用 %d 个\n", total, enabled, disabled)
+
+	for i, acc := range accounts {
+		status := "✅ 启用"
+		if !acc.Enabled {
+			status = "❌ 禁用"
+		}
+
+		logger.Info("账号 %d: %s", i+1, status)
+		logger.Info("  邮箱: %s", acc.EmployeeEmail)
+		logger.Info("  名称: %s", acc.EmployeeName)
+		logger.Info("  员工ID: %d", acc.EmployeeID)
+		logger.Info("  API Key 名称: %s", acc.Name)
+		logger.Info("  API Key ID: %s", acc.KeyID)
+		logger.Info("  API Key: %s", maskAPIKey(acc.APIKey))
+		logger.Info("  添加时间: %s", acc.AddedAt)
+		logger.Info("")
+	}
+
+	logger.Info("========================================")
+}
+
+// runMultiAccountMode 多账号模式 - 启动多账号调度器
+func runMultiAccountMode(accountMgr *account.Manager, store *storage.Storage, apiKeys []string, plans []string, timezone string) {
+	logger.Info("\n========================================")
+	logger.Info("多账号模式 - 启动多账号调度器")
+	logger.Info("========================================\n")
+
+	// 步骤 1: 同步账号信息到持久化配置
+	logger.Info("步骤 1/3: 同步账号信息...")
+	if err := accountMgr.SyncAccountsFromAPIKeys(apiKeys, plans); err != nil {
+		logger.Error("同步账号失败: %v", err)
+		os.Exit(1)
+	}
+
+	// 步骤 2: 获取当前活跃的账号（仅限当前 API Keys 列表中的）
+	logger.Info("\n步骤 2/3: 获取活跃账号...")
+	activeAccounts, err := accountMgr.GetActiveAccountsFromAPIKeys(apiKeys)
+	if err != nil {
+		logger.Error("获取活跃账号失败: %v", err)
+		os.Exit(1)
+	}
+
+	if len(activeAccounts) == 0 {
+		logger.Error("没有活跃的账号，请检查 API Keys 是否正确")
+		os.Exit(1)
+	}
+
+	// 显示账号统计
+	total, _, _, _ := accountMgr.GetAccountCount()
+	logger.Info("账号统计: 历史总计 %d 个，当前活跃 %d 个\n", total, len(activeAccounts))
+
+	// 显示活跃账号列表
+	logger.Info("活跃账号列表:")
+	for i, acc := range activeAccounts {
+		logger.Info("  [%d] %s (%s)", i+1, acc.EmployeeEmail, acc.EmployeeName)
+	}
+
+	// 步骤 3: 创建并启动多账号调度器
+	logger.Info("\n步骤 3/3: 启动调度器...")
+	multiSched, err := scheduler.NewMultiSchedulerWithAccounts(store, *baseURL, activeAccounts, plans, timezone)
+	if err != nil {
+		logger.Error("创建多账号调度器失败: %v", err)
+		os.Exit(1)
+	}
+
+	// 启动调度器
+	logger.Info("\n========================================")
+	logger.Info("多账号调度器已启动")
+	logger.Info("将为 %d 个账号执行定时重置", len(activeAccounts))
+	logger.Info("按 Ctrl+C 停止")
+	logger.Info("========================================\n")
+
+	multiSched.Start()
+}
+
+// getAllAPIKeys 从多个来源获取所有 API Keys（统一处理单个和多个）
+func getAllAPIKeys(cmdKey, cmdKeys string) []string {
+	var allKeys []string
+
+	// 优先级: 命令行参数 > 环境变量 > .env 文件
+
+	// 1. 从 -apikeys 参数获取
+	if cmdKeys != "" {
+		keys := strings.Split(cmdKeys, ",")
+		for _, key := range keys {
+			key = strings.TrimSpace(key)
+			if key != "" {
+				allKeys = append(allKeys, key)
+			}
+		}
+	}
+
+	// 2. 从 -apikey 参数获取（可能是单个或逗号分隔的多个）
+	if cmdKey != "" {
+		keys := strings.Split(cmdKey, ",")
+		for _, key := range keys {
+			key = strings.TrimSpace(key)
+			if key != "" {
+				allKeys = append(allKeys, key)
+			}
+		}
+	}
+
+	// 3. 如果命令行参数都没有，尝试环境变量
+	if len(allKeys) == 0 {
+		// 尝试 API_KEYS
+		if envKeys := os.Getenv("API_KEYS"); envKeys != "" {
+			keys := strings.Split(envKeys, ",")
+			for _, key := range keys {
+				key = strings.TrimSpace(key)
+				if key != "" {
+					allKeys = append(allKeys, key)
+				}
+			}
+		}
+
+		// 尝试 API_KEY（可能是单个或逗号分隔的多个）
+		if len(allKeys) == 0 {
+			if envKey := os.Getenv("API_KEY"); envKey != "" {
+				keys := strings.Split(envKey, ",")
+				for _, key := range keys {
+					key = strings.TrimSpace(key)
+					if key != "" {
+						allKeys = append(allKeys, key)
+					}
+				}
+			}
+		}
+	}
+
+	// 4. 如果还是没有，尝试 .env 文件
+	if len(allKeys) == 0 {
+		// 尝试 API_KEYS
+		if keysStr := readAPIKeysFromEnv(".env"); keysStr != "" {
+			keys := strings.Split(keysStr, ",")
+			for _, key := range keys {
+				key = strings.TrimSpace(key)
+				if key != "" {
+					allKeys = append(allKeys, key)
+				}
+			}
+		}
+
+		// 尝试 API_KEY
+		if len(allKeys) == 0 {
+			if keyStr := readAPIKeyFromEnv(".env"); keyStr != "" {
+				keys := strings.Split(keyStr, ",")
+				for _, key := range keys {
+					key = strings.TrimSpace(key)
+					if key != "" {
+						allKeys = append(allKeys, key)
+					}
+				}
+			}
+		}
+	}
+
+	return allKeys
+}
+
+// getAPIKeys 从多个来源获取多个 API Keys（保留向后兼容）
+func getAPIKeys(cmdKeys string) []string {
+	return getAllAPIKeys("", cmdKeys)
+}
+
+// readAPIKeysFromEnv 从 .env 文件读取多个 API Keys
+func readAPIKeysFromEnv(filename string) string {
+	file, err := os.Open(filename)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// 支持多种格式
+		if strings.HasPrefix(line, "api-keys=") {
+			return strings.TrimPrefix(line, "api-keys=")
+		}
+		if strings.HasPrefix(line, "API_KEYS=") {
+			return strings.TrimPrefix(line, "API_KEYS=")
 		}
 	}
 

@@ -258,3 +258,35 @@ func (c *Client) TestConnection() error {
 	logger.Info("API 连接测试成功")
 	return nil
 }
+
+// GetAccountInfo 获取账号信息（通过 Usage API）
+func (c *Client) GetAccountInfo() (*models.AccountConfig, error) {
+	usage, err := c.GetUsage()
+	if err != nil {
+		return nil, fmt.Errorf("获取账号信息失败: %w", err)
+	}
+
+	accountConfig := &models.AccountConfig{
+		APIKey:        c.APIKey,
+		KeyID:         usage.KeyID,
+		EmployeeID:    usage.EmployeeID,
+		EmployeeName:  "", // Usage API 没有直接返回，需要从订阅中获取
+		EmployeeEmail: "", // Usage API 没有直接返回，需要从订阅中获取
+		Name:          usage.Name,
+		Enabled:       true,
+		AddedAt:       time.Now().Format(time.RFC3339),
+	}
+
+	// 尝试从订阅列表中获取员工信息
+	subscriptions, err := c.GetSubscriptions()
+	if err == nil && len(subscriptions) > 0 {
+		// 取第一个订阅的员工信息
+		accountConfig.EmployeeName = subscriptions[0].EmployeeName
+		accountConfig.EmployeeEmail = subscriptions[0].EmployeeEmail
+	}
+
+	logger.Info("账号信息获取成功: KeyID=%s, Name=%s, EmployeeID=%d, Email=%s",
+		accountConfig.KeyID, accountConfig.Name, accountConfig.EmployeeID, accountConfig.EmployeeEmail)
+
+	return accountConfig, nil
+}

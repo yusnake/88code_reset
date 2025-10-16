@@ -13,10 +13,12 @@ import (
 )
 
 const (
-	AccountFile      = "account.json"
-	StatusFile       = "status.json"
-	LockFile         = "reset.lock"
-	ResponseLogDir   = "responses"  // API响应体保存目录
+	AccountFile          = "account.json"
+	StatusFile           = "status.json"
+	LockFile             = "reset.lock"
+	ResponseLogDir       = "responses"          // API响应体保存目录
+	MultiAccountFile     = "accounts.json"      // 多账号配置文件
+	AccountsDir          = "accounts"           // 多账号数据目录
 )
 
 // Storage 存储管理器
@@ -239,6 +241,128 @@ func (s *Storage) loadJSON(filePath string, target interface{}) error {
 	}
 
 	return nil
+}
+
+// SaveMultiAccountConfig 保存多账号配置
+func (s *Storage) SaveMultiAccountConfig(config *models.MultiAccountConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	filePath := filepath.Join(s.dataDir, MultiAccountFile)
+	return s.saveJSON(filePath, config)
+}
+
+// LoadMultiAccountConfig 加载多账号配置
+func (s *Storage) LoadMultiAccountConfig() (*models.MultiAccountConfig, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	filePath := filepath.Join(s.dataDir, MultiAccountFile)
+	var config models.MultiAccountConfig
+
+	if err := s.loadJSON(filePath, &config); err != nil {
+		if os.IsNotExist(err) {
+			logger.Warn("多账号配置文件不存在，返回空配置")
+			return &models.MultiAccountConfig{Accounts: []models.AccountConfig{}}, nil
+		}
+		return nil, err
+	}
+
+	return &config, nil
+}
+
+// GetAccountDataDir 获取指定账号的数据目录（基于 employeeEmail）
+func (s *Storage) GetAccountDataDir(employeeEmail string) string {
+	// 使用邮箱作为目录名，确保安全
+	safeEmail := filepath.Base(employeeEmail)
+	return filepath.Join(s.dataDir, AccountsDir, safeEmail)
+}
+
+// SaveAccountInfoByEmail 保存指定账号的信息
+func (s *Storage) SaveAccountInfoByEmail(employeeEmail string, account *models.AccountInfo) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	account.LastUpdated = time.Now()
+	accountDir := s.GetAccountDataDir(employeeEmail)
+
+	// 确保账号目录存在
+	if err := os.MkdirAll(accountDir, 0755); err != nil {
+		return fmt.Errorf("创建账号目录失败: %w", err)
+	}
+
+	filePath := filepath.Join(accountDir, AccountFile)
+	return s.saveJSON(filePath, account)
+}
+
+// LoadAccountInfoByEmail 加载指定账号的信息
+func (s *Storage) LoadAccountInfoByEmail(employeeEmail string) (*models.AccountInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	accountDir := s.GetAccountDataDir(employeeEmail)
+	filePath := filepath.Join(accountDir, AccountFile)
+	var account models.AccountInfo
+
+	if err := s.loadJSON(filePath, &account); err != nil {
+		if os.IsNotExist(err) {
+			logger.Warn("账号 %s 的信息文件不存在", employeeEmail)
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &account, nil
+}
+
+// SaveStatusByEmail 保存指定账号的执行状态
+func (s *Storage) SaveStatusByEmail(employeeEmail string, status *models.ExecutionStatus) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	status.LastCheckTime = time.Now()
+	accountDir := s.GetAccountDataDir(employeeEmail)
+
+	// 确保账号目录存在
+	if err := os.MkdirAll(accountDir, 0755); err != nil {
+		return fmt.Errorf("创建账号目录失败: %w", err)
+	}
+
+	filePath := filepath.Join(accountDir, StatusFile)
+	return s.saveJSON(filePath, status)
+}
+
+// LoadStatusByEmail 加载指定账号的执行状态
+func (s *Storage) LoadStatusByEmail(employeeEmail string) (*models.ExecutionStatus, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	accountDir := s.GetAccountDataDir(employeeEmail)
+	filePath := filepath.Join(accountDir, StatusFile)
+	var status models.ExecutionStatus
+
+	if err := s.loadJSON(filePath, &status); err != nil {
+		if os.IsNotExist(err) {
+			logger.Warn("账号 %s 的状态文件不存在，将创建新文件", employeeEmail)
+			return s.initializeStatus(), nil
+		}
+		return nil, err
+	}
+
+	// 检查日期是否变化
+	today := time.Now().Format("2006-01-02")
+	if status.TodayDate != today {
+		logger.Info("账号 %s 检测到日期变化: %s -> %s，重置今日标志", employeeEmail, status.TodayDate, today)
+		status.TodayDate = today
+		status.FirstResetToday = false
+		status.SecondResetToday = false
+		status.ResetTimesBeforeReset = 0
+		status.ResetTimesAfterReset = 0
+		status.CreditsBeforeReset = 0
+		status.CreditsAfterReset = 0
+	}
+
+	return &status, nil
 }
 
 // SaveAPIResponse 保存 API 响应体用于调试
