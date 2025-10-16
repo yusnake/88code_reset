@@ -22,10 +22,19 @@ type MultiScheduler struct {
 	ctx                    context.Context
 	cancel                 context.CancelFunc
 	lastSubscriptionCheck  time.Time
+	creditThresholdMax     float64 // 额度上限百分比（0-100），当额度>上限时跳过重置
+	creditThresholdMin     float64 // 额度下限百分比（0-100），当额度<下限时才执行重置
+	useMaxThreshold        bool    // true=使用上限模式，false=使用下限模式
+	enableFirstReset       bool    // 是否启用18:55重置
 }
 
 // NewMultiSchedulerWithAccounts 创建新的多账号调度器（使用指定的账号列表）
 func NewMultiSchedulerWithAccounts(storage *storage.Storage, baseURL string, activeAccounts []models.AccountConfig, targetPlans []string, timezone string) (*MultiScheduler, error) {
+	return NewMultiSchedulerWithConfig(storage, baseURL, activeAccounts, targetPlans, timezone, 83.0, 0, true, false)
+}
+
+// NewMultiSchedulerWithConfig 创建带配置的多账号调度器
+func NewMultiSchedulerWithConfig(storage *storage.Storage, baseURL string, activeAccounts []models.AccountConfig, targetPlans []string, timezone string, thresholdMax, thresholdMin float64, useMax bool, enableFirstReset bool) (*MultiScheduler, error) {
 	// 使用配置的时区
 	if timezone == "" {
 		timezone = BeijingTimezone
@@ -48,6 +57,10 @@ func NewMultiSchedulerWithAccounts(storage *storage.Storage, baseURL string, act
 		ctx:                   ctx,
 		cancel:                cancel,
 		lastSubscriptionCheck: time.Time{},
+		creditThresholdMax:    thresholdMax,
+		creditThresholdMin:    thresholdMin,
+		useMaxThreshold:       useMax,
+		enableFirstReset:      enableFirstReset,
 	}, nil
 }
 
@@ -56,8 +69,22 @@ func (s *MultiScheduler) Start() {
 	logger.Info("========================================")
 	logger.Info("多账号调度器启动")
 	logger.Info("时区: %s", s.location.String())
-	logger.Info("第一次重置时间: %02d:%02d", FirstResetHour, FirstResetMinute)
+	if s.enableFirstReset {
+		logger.Info("第一次重置时间: %02d:%02d (已启用)", FirstResetHour, FirstResetMinute)
+	} else {
+		logger.Info("第一次重置时间: %02d:%02d (已禁用)", FirstResetHour, FirstResetMinute)
+	}
 	logger.Info("第二次重置时间: %02d:%02d", SecondResetHour, SecondResetMinute)
+
+	// 显示额度判断模式
+	if s.useMaxThreshold && s.creditThresholdMax > 0 {
+		logger.Info("额度判断模式: 上限模式 - 当额度 > %.1f%% 时跳过18点重置", s.creditThresholdMax)
+	} else if !s.useMaxThreshold && s.creditThresholdMin > 0 {
+		logger.Info("额度判断模式: 下限模式 - 当额度 < %.1f%% 时才执行18点重置", s.creditThresholdMin)
+	} else {
+		logger.Info("额度判断模式: 已禁用")
+	}
+
 	logger.Info("活跃账号数量: %d", len(s.activeAccounts))
 	logger.Info("========================================")
 
@@ -181,6 +208,10 @@ func (s *MultiScheduler) checkAndExecute() {
 
 	// 检查是否需要执行第一次重置（18:50）
 	if currentHour == FirstResetHour && currentMinute == FirstResetMinute {
+		if !s.enableFirstReset {
+			logger.Debug("18:55重置已禁用，跳过")
+			return
+		}
 		s.executeResetForAllAccounts("first")
 		return
 	}
@@ -287,6 +318,62 @@ func (s *MultiScheduler) executeResetForAccount(acc models.AccountConfig, resetT
 		logger.Error("账号 %s 获取目标订阅失败: %v", employeeEmail, err)
 		s.updateResetStatus(employeeEmail, status, resetType, false, err.Error())
 		return false
+	}
+
+	// 检查当前额度百分比（仅在第一次重置时检查）
+	if resetType == "first" && sub.SubscriptionPlan.PlanType == "MONTHLY" {
+		creditPercent := 0.0
+		if sub.SubscriptionPlan.CreditLimit > 0 {
+			creditPercent = (sub.CurrentCredits / sub.SubscriptionPlan.CreditLimit) * 100
+		}
+
+		logger.Info("账号 %s 当前额度: %.4f / %.2f (%.2f%%)",
+			employeeEmail,
+			sub.CurrentCredits,
+			sub.SubscriptionPlan.CreditLimit,
+			creditPercent)
+
+		// 上限模式：当额度>上限时跳过重置
+		if s.useMaxThreshold && s.creditThresholdMax > 0 {
+			if creditPercent > s.creditThresholdMax {
+				skipMsg := fmt.Sprintf("额度充足(%.2f%% > %.1f%%)", creditPercent, s.creditThresholdMax)
+				logger.Info("账号 %s 上限模式: 当前额度 %.2f%% > %.1f%%，跳过18点重置",
+					employeeEmail, creditPercent, s.creditThresholdMax)
+
+				// 标记为已执行（跳过）
+				now := time.Now()
+				status.FirstResetToday = true
+				status.LastFirstResetTime = &now
+				status.LastResetMessage = fmt.Sprintf("跳过: %s", skipMsg)
+				if err := s.storage.SaveStatusByEmail(employeeEmail, status); err != nil {
+					logger.Error("账号 %s 保存状态失败: %v", employeeEmail, err)
+				}
+
+				return true // 返回 true 表示已处理
+			}
+			logger.Info("账号 %s 上限模式: 当前额度 %.2f%% <= %.1f%%，继续执行重置",
+				employeeEmail, creditPercent, s.creditThresholdMax)
+		} else if !s.useMaxThreshold && s.creditThresholdMin > 0 {
+			// 下限模式：当额度<下限时才执行重置
+			if creditPercent >= s.creditThresholdMin {
+				skipMsg := fmt.Sprintf("额度充足(%.2f%% >= %.1f%%)", creditPercent, s.creditThresholdMin)
+				logger.Info("账号 %s 下限模式: 当前额度 %.2f%% >= %.1f%%，跳过18点重置",
+					employeeEmail, creditPercent, s.creditThresholdMin)
+
+				// 标记为已执行（跳过）
+				now := time.Now()
+				status.FirstResetToday = true
+				status.LastFirstResetTime = &now
+				status.LastResetMessage = fmt.Sprintf("跳过: %s", skipMsg)
+				if err := s.storage.SaveStatusByEmail(employeeEmail, status); err != nil {
+					logger.Error("账号 %s 保存状态失败: %v", employeeEmail, err)
+				}
+
+				return true // 返回 true 表示已处理
+			}
+			logger.Info("账号 %s 下限模式: 当前额度 %.2f%% < %.1f%%，继续执行重置",
+				employeeEmail, creditPercent, s.creditThresholdMin)
+		}
 	}
 
 	// 记录重置前的状态

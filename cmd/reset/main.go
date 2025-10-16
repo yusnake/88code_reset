@@ -15,23 +15,28 @@ import (
 )
 
 const (
-	DefaultBaseURL  = "https://www.88code.org"
-	DefaultDataDir  = "./data"
-	DefaultLogDir   = "./logs"
-	DefaultTimezone = "Asia/Shanghai" // 默认使用北京/上海时区 (UTC+8)
+	DefaultBaseURL             = "https://www.88code.org"
+	DefaultDataDir             = "./data"
+	DefaultLogDir              = "./logs"
+	DefaultTimezone            = "Asia/Shanghai" // 默认使用北京/上海时区 (UTC+8)
+	DefaultCreditThresholdMax  = 83.0            // 默认额度上限百分比 83%（当额度>上限时跳过重置）
+	DefaultEnableFirstReset    = false           // 默认关闭18:55重置
 )
 
 var (
 	// 命令行参数
-	mode         = flag.String("mode", "test", "运行模式: test(测试), run(自动调度器), manual(手动重置), list(列出历史账号)")
-	apiKey       = flag.String("apikey", "", "API Key，支持单个或多个（逗号分隔），优先使用环境变量或.env文件")
-	apiKeys      = flag.String("apikeys", "", "多个 API Keys（逗号分隔），与 -apikey 等效")
-	baseURL      = flag.String("baseurl", DefaultBaseURL, "API Base URL")
-	dataDir      = flag.String("datadir", DefaultDataDir, "数据目录")
-	logDir       = flag.String("logdir", DefaultLogDir, "日志目录")
-	skipConfirm  = flag.Bool("yes", false, "跳过确认提示（仅用于手动重置）")
-	planNames    = flag.String("plans", "FREE", "要重置的订阅计划名称，多个用逗号分隔（例如: FREE,PRO,PLUS）")
-	timezone     = flag.String("timezone", "", "时区设置 (例如: Asia/Shanghai, Asia/Hong_Kong, UTC)")
+	mode               = flag.String("mode", "test", "运行模式: test(测试), run(自动调度器), manual(手动重置), list(列出历史账号)")
+	apiKey             = flag.String("apikey", "", "API Key，支持单个或多个（逗号分隔），优先使用环境变量或.env文件")
+	apiKeys            = flag.String("apikeys", "", "多个 API Keys（逗号分隔），与 -apikey 等效")
+	baseURL            = flag.String("baseurl", DefaultBaseURL, "API Base URL")
+	dataDir            = flag.String("datadir", DefaultDataDir, "数据目录")
+	logDir             = flag.String("logdir", DefaultLogDir, "日志目录")
+	skipConfirm        = flag.Bool("yes", false, "跳过确认提示（仅用于手动重置）")
+	planNames          = flag.String("plans", "FREE", "要重置的订阅计划名称，多个用逗号分隔（例如: FREE,PRO,PLUS）")
+	timezone           = flag.String("timezone", "", "时区设置 (例如: Asia/Shanghai, Asia/Hong_Kong, UTC)")
+	creditThresholdMax = flag.Float64("threshold-max", 0, "额度上限百分比(0-100)，当额度>上限时跳过18点重置，0表示使用环境变量或默认值83")
+	creditThresholdMin = flag.Float64("threshold-min", 0, "额度下限百分比(0-100)，当额度<下限时才执行18点重置，0表示不使用下限")
+	enableFirstReset   = flag.Bool("first-reset", false, "是否启用18:55重置，默认关闭")
 )
 
 func main() {
@@ -51,11 +56,25 @@ func main() {
 	// 获取时区配置
 	tz := getTimezone(*timezone)
 
+	// 获取额度百分比阈值配置
+	thresholdMax, thresholdMin, useMax := getCreditThresholds(*creditThresholdMax, *creditThresholdMin)
+
+	// 获取18:55重置开关配置
+	firstReset := getEnableFirstReset(*enableFirstReset)
+
 	logger.Info("Base URL: %s", *baseURL)
 	logger.Info("时区设置: %s", tz)
 	logger.Info("数据目录: %s", *dataDir)
 	logger.Info("日志目录: %s", *logDir)
 	logger.Info("目标套餐: %s", *planNames)
+	if useMax {
+		logger.Info("额度判断模式: 上限模式 - 当额度 > %.1f%% 时跳过18点重置", thresholdMax)
+	} else if thresholdMin > 0 {
+		logger.Info("额度判断模式: 下限模式 - 当额度 < %.1f%% 时才执行18点重置", thresholdMin)
+	} else {
+		logger.Info("额度判断模式: 已禁用")
+	}
+	logger.Info("18:55重置: %v", firstReset)
 
 	// 解析套餐名称
 	plans := strings.Split(*planNames, ",")
@@ -96,7 +115,7 @@ func main() {
 		logger.Info("测试第一个 API Key: %s", maskAPIKey(keys[0]))
 		apiClient := api.NewClient(*baseURL, keys[0], plans)
 		apiClient.Storage = store
-		runTestMode(apiClient, store, tz)
+		runTestMode(apiClient, store, tz, thresholdMax, thresholdMin, useMax, firstReset)
 	case "run":
 		// 自动调度器模式：支持单个或多个账号
 		if len(keys) == 1 {
@@ -104,11 +123,11 @@ func main() {
 			logger.Info("单账号模式 - API Key: %s", maskAPIKey(keys[0]))
 			apiClient := api.NewClient(*baseURL, keys[0], plans)
 			apiClient.Storage = store
-			runSchedulerMode(apiClient, store, tz)
+			runSchedulerMode(apiClient, store, tz, thresholdMax, thresholdMin, useMax, firstReset)
 		} else {
 			// 多账号模式
 			logger.Info("多账号模式 - 检测到 %d 个 API Key", len(keys))
-			runMultiAccountMode(accountMgr, store, keys, plans, tz)
+			runMultiAccountMode(accountMgr, store, keys, plans, tz, thresholdMax, thresholdMin, useMax, firstReset)
 		}
 	case "manual":
 		// 手动重置模式：只重置第一个账号
@@ -122,7 +141,7 @@ func main() {
 		logger.Info("手动重置账号 - API Key: %s", maskAPIKey(keys[0]))
 		apiClient := api.NewClient(*baseURL, keys[0], plans)
 		apiClient.Storage = store
-		runManualMode(apiClient, store, tz)
+		runManualMode(apiClient, store, tz, thresholdMax, thresholdMin, useMax, firstReset)
 	default:
 		logger.Error("未知的运行模式: %s", *mode)
 		logger.Error("支持的模式: test, run, manual, list")
@@ -131,7 +150,7 @@ func main() {
 }
 
 // runTestMode 测试模式 - 测试接口连接和获取信息
-func runTestMode(apiClient *api.Client, store *storage.Storage, timezone string) {
+func runTestMode(apiClient *api.Client, store *storage.Storage, timezone string, thresholdMax, thresholdMin float64, useMax bool, enableFirstReset bool) {
 	logger.Info("\n========================================")
 	logger.Info("测试模式 - 测试接口连接")
 	logger.Info("========================================\n")
@@ -212,13 +231,13 @@ func runTestMode(apiClient *api.Client, store *storage.Storage, timezone string)
 }
 
 // runSchedulerMode 调度器模式 - 启动定时任务
-func runSchedulerMode(apiClient *api.Client, store *storage.Storage, timezone string) {
+func runSchedulerMode(apiClient *api.Client, store *storage.Storage, timezone string, thresholdMax, thresholdMin float64, useMax bool, enableFirstReset bool) {
 	logger.Info("\n========================================")
 	logger.Info("调度器模式 - 启动定时任务")
 	logger.Info("========================================\n")
 
 	// 创建调度器
-	sched, err := scheduler.NewScheduler(apiClient, store, timezone)
+	sched, err := scheduler.NewSchedulerWithConfig(apiClient, store, timezone, thresholdMax, thresholdMin, useMax, enableFirstReset)
 	if err != nil {
 		logger.Error("创建调度器失败: %v", err)
 		os.Exit(1)
@@ -232,13 +251,13 @@ func runSchedulerMode(apiClient *api.Client, store *storage.Storage, timezone st
 }
 
 // runManualMode 手动模式 - 手动触发重置（需要确认）
-func runManualMode(apiClient *api.Client, store *storage.Storage, timezone string) {
+func runManualMode(apiClient *api.Client, store *storage.Storage, timezone string, thresholdMax, thresholdMin float64, useMax bool, enableFirstReset bool) {
 	logger.Info("\n========================================")
 	logger.Info("手动重置模式")
 	logger.Info("========================================\n")
 
 	// 创建调度器
-	sched, err := scheduler.NewScheduler(apiClient, store, timezone)
+	sched, err := scheduler.NewSchedulerWithConfig(apiClient, store, timezone, thresholdMax, thresholdMin, useMax, enableFirstReset)
 	if err != nil {
 		logger.Error("创建调度器失败: %v", err)
 		os.Exit(1)
@@ -436,6 +455,185 @@ func readTimezoneFromEnv(filename string) string {
 	return ""
 }
 
+// getCreditThresholds 从多个来源获取额度百分比上下限
+// 返回值: (thresholdMax, thresholdMin, useMax)
+// useMax: true表示使用上限模式，false表示使用下限模式
+func getCreditThresholds(cmdMax, cmdMin float64) (float64, float64, bool) {
+	// 优先级: 命令行参数 > 环境变量 > .env 文件 > 默认值
+
+	max := 0.0
+	min := 0.0
+
+	// 1. 从命令行参数获取
+	if cmdMax > 0 {
+		max = cmdMax
+	}
+	if cmdMin > 0 {
+		min = cmdMin
+	}
+
+	// 2. 从环境变量获取
+	if max == 0 {
+		if envMax := os.Getenv("CREDIT_THRESHOLD_MAX"); envMax != "" {
+			if val, err := parseFloat(envMax); err == nil && val > 0 {
+				max = val
+			}
+		}
+	}
+	if min == 0 {
+		if envMin := os.Getenv("CREDIT_THRESHOLD_MIN"); envMin != "" {
+			if val, err := parseFloat(envMin); err == nil && val > 0 {
+				min = val
+			}
+		}
+	}
+
+	// 3. 从 .env 文件获取
+	if max == 0 {
+		if val := readCreditThresholdMaxFromEnv(".env"); val > 0 {
+			max = val
+		}
+	}
+	if min == 0 {
+		if val := readCreditThresholdMinFromEnv(".env"); val > 0 {
+			min = val
+		}
+	}
+
+	// 4. 应用默认值（仅上限有默认值）
+	if max == 0 && min == 0 {
+		max = DefaultCreditThresholdMax
+	}
+
+	// 5. 确定使用模式：优先使用上限，其次使用下限
+	useMax := max > 0
+
+	return max, min, useMax
+}
+
+// readCreditThresholdMaxFromEnv 从 .env 文件读取额度上限
+func readCreditThresholdMaxFromEnv(filename string) float64 {
+	file, err := os.Open(filename)
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "CREDIT_THRESHOLD_MAX=") {
+			valueStr := strings.TrimPrefix(line, "CREDIT_THRESHOLD_MAX=")
+			if threshold, err := parseFloat(valueStr); err == nil {
+				return threshold
+			}
+		}
+	}
+
+	return 0
+}
+
+// readCreditThresholdMinFromEnv 从 .env 文件读取额度下限
+func readCreditThresholdMinFromEnv(filename string) float64 {
+	file, err := os.Open(filename)
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "CREDIT_THRESHOLD_MIN=") {
+			valueStr := strings.TrimPrefix(line, "CREDIT_THRESHOLD_MIN=")
+			if threshold, err := parseFloat(valueStr); err == nil {
+				return threshold
+			}
+		}
+	}
+
+	return 0
+}
+
+// getEnableFirstReset 从多个来源获取是否启用18:55重置
+func getEnableFirstReset(cmdEnable bool) bool {
+	// 优先级: 命令行参数 > 环境变量 > .env 文件 > 默认值
+
+	// 1. 命令行参数（如果显式设置）
+	if cmdEnable {
+		return true
+	}
+
+	// 2. 环境变量 ENABLE_FIRST_RESET
+	if envEnable := os.Getenv("ENABLE_FIRST_RESET"); envEnable != "" {
+		return parseBool(envEnable)
+	}
+
+	// 3. .env 文件
+	if enable := readEnableFirstResetFromEnv(".env"); enable {
+		return true
+	}
+
+	// 4. 默认值
+	return DefaultEnableFirstReset
+}
+
+// readEnableFirstResetFromEnv 从 .env 文件读取是否启用18:55重置
+func readEnableFirstResetFromEnv(filename string) bool {
+	file, err := os.Open(filename)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		line = strings.TrimSpace(line)
+
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "ENABLE_FIRST_RESET=") {
+			valueStr := strings.TrimPrefix(line, "ENABLE_FIRST_RESET=")
+			return parseBool(valueStr)
+		}
+	}
+
+	return false
+}
+
+// parseFloat 解析浮点数
+func parseFloat(s string) (float64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty string")
+	}
+
+	var value float64
+	_, err := fmt.Sscanf(s, "%f", &value)
+	return value, err
+}
+
+// parseBool 解析布尔值
+func parseBool(s string) bool {
+	s = strings.TrimSpace(strings.ToLower(s))
+	return s == "true" || s == "1" || s == "yes" || s == "on" || s == "enabled"
+}
+
 
 // runListMode 列表模式 - 列出所有账号
 func runListMode(accountMgr *account.Manager) {
@@ -479,7 +677,7 @@ func runListMode(accountMgr *account.Manager) {
 }
 
 // runMultiAccountMode 多账号模式 - 启动多账号调度器
-func runMultiAccountMode(accountMgr *account.Manager, store *storage.Storage, apiKeys []string, plans []string, timezone string) {
+func runMultiAccountMode(accountMgr *account.Manager, store *storage.Storage, apiKeys []string, plans []string, timezone string, thresholdMax, thresholdMin float64, useMax bool, enableFirstReset bool) {
 	logger.Info("\n========================================")
 	logger.Info("多账号模式 - 启动多账号调度器")
 	logger.Info("========================================\n")
@@ -516,7 +714,7 @@ func runMultiAccountMode(accountMgr *account.Manager, store *storage.Storage, ap
 
 	// 步骤 3: 创建并启动多账号调度器
 	logger.Info("\n步骤 3/3: 启动调度器...")
-	multiSched, err := scheduler.NewMultiSchedulerWithAccounts(store, *baseURL, activeAccounts, plans, timezone)
+	multiSched, err := scheduler.NewMultiSchedulerWithConfig(store, *baseURL, activeAccounts, plans, timezone, thresholdMax, thresholdMin, useMax, enableFirstReset)
 	if err != nil {
 		logger.Error("创建多账号调度器失败: %v", err)
 		os.Exit(1)

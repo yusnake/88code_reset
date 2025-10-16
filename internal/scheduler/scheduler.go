@@ -37,10 +37,19 @@ type Scheduler struct {
 	ctx                    context.Context
 	cancel                 context.CancelFunc
 	lastSubscriptionCheck  time.Time
+	creditThresholdMax     float64 // 额度上限百分比（0-100），当额度>上限时跳过重置
+	creditThresholdMin     float64 // 额度下限百分比（0-100），当额度<下限时才执行重置
+	useMaxThreshold        bool    // true=使用上限模式，false=使用下限模式
+	enableFirstReset       bool    // 是否启用18:55重置
 }
 
 // NewScheduler 创建新的调度器
 func NewScheduler(apiClient *api.Client, storage *storage.Storage, timezone string) (*Scheduler, error) {
+	return NewSchedulerWithConfig(apiClient, storage, timezone, 83.0, 0, true, false)
+}
+
+// NewSchedulerWithConfig 创建带配置的调度器
+func NewSchedulerWithConfig(apiClient *api.Client, storage *storage.Storage, timezone string, thresholdMax, thresholdMin float64, useMax bool, enableFirstReset bool) (*Scheduler, error) {
 	// 使用配置的时区，如果未设置则使用默认时区
 	if timezone == "" {
 		timezone = BeijingTimezone
@@ -61,6 +70,10 @@ func NewScheduler(apiClient *api.Client, storage *storage.Storage, timezone stri
 		ctx:                   ctx,
 		cancel:                cancel,
 		lastSubscriptionCheck: time.Time{}, // 初始化为零值，确保首次检查
+		creditThresholdMax:    thresholdMax,
+		creditThresholdMin:    thresholdMin,
+		useMaxThreshold:       useMax,
+		enableFirstReset:      enableFirstReset,
 	}, nil
 }
 
@@ -69,8 +82,22 @@ func (s *Scheduler) Start() {
 	logger.Info("========================================")
 	logger.Info("调度器启动")
 	logger.Info("时区: %s", s.location.String())
-	logger.Info("第一次重置时间: %02d:%02d", FirstResetHour, FirstResetMinute)
+	if s.enableFirstReset {
+		logger.Info("第一次重置时间: %02d:%02d (已启用)", FirstResetHour, FirstResetMinute)
+	} else {
+		logger.Info("第一次重置时间: %02d:%02d (已禁用)", FirstResetHour, FirstResetMinute)
+	}
 	logger.Info("第二次重置时间: %02d:%02d", SecondResetHour, SecondResetMinute)
+
+	// 显示额度判断模式
+	if s.useMaxThreshold && s.creditThresholdMax > 0 {
+		logger.Info("额度判断模式: 上限模式 - 当额度 > %.1f%% 时跳过18点重置", s.creditThresholdMax)
+	} else if !s.useMaxThreshold && s.creditThresholdMin > 0 {
+		logger.Info("额度判断模式: 下限模式 - 当额度 < %.1f%% 时才执行18点重置", s.creditThresholdMin)
+	} else {
+		logger.Info("额度判断模式: 已禁用")
+	}
+
 	logger.Info("订阅状态检查间隔: %v", SubscriptionCheckInterval)
 	logger.Info("========================================")
 
@@ -162,6 +189,10 @@ func (s *Scheduler) checkAndExecute() {
 
 	// 检查是否需要执行第一次重置（18:50）
 	if currentHour == FirstResetHour && currentMinute == FirstResetMinute {
+		if !s.enableFirstReset {
+			logger.Debug("18:55重置已禁用，跳过")
+			return
+		}
 		s.executeReset("first")
 		return
 	}
@@ -224,6 +255,43 @@ func (s *Scheduler) executeReset(resetType string) {
 
 	// 更新账号信息
 	s.updateAccountInfo(freeSub)
+
+	// 检查当前额度百分比（仅在第一次重置时检查）
+	if resetType == "first" && freeSub.SubscriptionPlan.PlanType == "MONTHLY" {
+		creditPercent := 0.0
+		if freeSub.SubscriptionPlan.CreditLimit > 0 {
+			creditPercent = (freeSub.CurrentCredits / freeSub.SubscriptionPlan.CreditLimit) * 100
+		}
+
+		logger.Info("当前额度: %.4f / %.2f (%.2f%%)",
+			freeSub.CurrentCredits,
+			freeSub.SubscriptionPlan.CreditLimit,
+			creditPercent)
+
+		// 上限模式：当额度>上限时跳过重置
+		if s.useMaxThreshold && s.creditThresholdMax > 0 {
+			if creditPercent > s.creditThresholdMax {
+				logger.Info("上限模式: 当前额度 %.2f%% > %.1f%%，跳过18点重置",
+					creditPercent, s.creditThresholdMax)
+				s.updateStatusAfterSkip(status, resetType, freeSub,
+					fmt.Sprintf("额度充足(%.2f%% > %.1f%%)", creditPercent, s.creditThresholdMax))
+				return
+			}
+			logger.Info("上限模式: 当前额度 %.2f%% <= %.1f%%，继续执行重置",
+				creditPercent, s.creditThresholdMax)
+		} else if !s.useMaxThreshold && s.creditThresholdMin > 0 {
+			// 下限模式：当额度<下限时才执行重置
+			if creditPercent >= s.creditThresholdMin {
+				logger.Info("下限模式: 当前额度 %.2f%% >= %.1f%%，跳过18点重置",
+					creditPercent, s.creditThresholdMin)
+				s.updateStatusAfterSkip(status, resetType, freeSub,
+					fmt.Sprintf("额度充足(%.2f%% >= %.1f%%)", creditPercent, s.creditThresholdMin))
+				return
+			}
+			logger.Info("下限模式: 当前额度 %.2f%% < %.1f%%，继续执行重置",
+				creditPercent, s.creditThresholdMin)
+		}
+	}
 
 	// 检查 resetTimes
 	logger.Info("当前 resetTimes: %d", freeSub.ResetTimes)
