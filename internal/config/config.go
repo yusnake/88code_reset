@@ -16,6 +16,9 @@ const (
 	DefaultEnableFirstReset   = false           // 默认关闭18:55重置
 )
 
+// EnvFile 提供 .env 文件位置（可在测试中重写）
+var EnvFile = ".env"
+
 // Settings 汇总运行配置
 type Settings struct {
 	Mode               string
@@ -78,7 +81,7 @@ func GetTimezone(cmdTimezone string) string {
 	}
 
 	// 4. .env 文件
-	if tzFromEnv := readTimezoneFromEnv(".env"); tzFromEnv != "" {
+	if tzFromEnv := readTimezoneFromEnv(EnvFile); tzFromEnv != "" {
 		return tzFromEnv
 	}
 
@@ -121,12 +124,12 @@ func GetCreditThresholds(cmdMax, cmdMin float64) (float64, float64, bool) {
 
 	// 3. .env 文件
 	if max == 0 {
-		if val := readCreditThresholdMaxFromEnv(".env"); val > 0 {
+		if val := readCreditThresholdMaxFromEnv(EnvFile); val > 0 {
 			max = val
 		}
 	}
 	if min == 0 {
-		if val := readCreditThresholdMinFromEnv(".env"); val > 0 {
+		if val := readCreditThresholdMinFromEnv(EnvFile); val > 0 {
 			min = val
 		}
 	}
@@ -157,7 +160,7 @@ func GetEnableFirstReset(cmdEnable bool) bool {
 	}
 
 	// 3. .env 文件
-	if enable := readEnableFirstResetFromEnv(".env"); enable {
+	if enable := readEnableFirstResetFromEnv(EnvFile); enable {
 		return true
 	}
 
@@ -196,12 +199,12 @@ func GetAllAPIKeys(cmdKey, cmdKeys string) []string {
 
 	// 4. .env 文件
 	if len(allKeys) == 0 {
-		if keysStr := readAPIKeysFromEnv(".env"); keysStr != "" {
+		if keysStr := readAPIKeysFromEnv(EnvFile); keysStr != "" {
 			allKeys = append(allKeys, splitAndTrim(keysStr)...)
 		}
 
 		if len(allKeys) == 0 {
-			if keyStr := readAPIKeyFromEnv(".env"); keyStr != "" {
+			if keyStr := readAPIKeyFromEnv(EnvFile); keyStr != "" {
 				allKeys = append(allKeys, splitAndTrim(keyStr)...)
 			}
 		}

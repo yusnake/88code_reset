@@ -1,7 +1,6 @@
 package scheduler
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -14,18 +13,16 @@ import (
 
 // MultiScheduler 多账号调度器
 type MultiScheduler struct {
-	activeAccounts         []models.AccountConfig  // 当前活跃的账号列表（从环境变量获取）
-	storage                *storage.Storage
-	baseURL                string
-	targetPlans            []string
-	location               *time.Location
-	ctx                    context.Context
-	cancel                 context.CancelFunc
-	lastSubscriptionCheck  time.Time
-	creditThresholdMax     float64 // 额度上限百分比（0-100），当额度>上限时跳过重置
-	creditThresholdMin     float64 // 额度下限百分比（0-100），当额度<下限时才执行重置
-	useMaxThreshold        bool    // true=使用上限模式，false=使用下限模式
-	enableFirstReset       bool    // 是否启用18:55重置
+	activeAccounts     []models.AccountConfig // 当前活跃的账号列表（从环境变量获取）
+	storage            *storage.Storage
+	baseURL            string
+	targetPlans        []string
+	location           *time.Location
+	creditThresholdMax float64 // 额度上限百分比（0-100），当额度>上限时跳过重置
+	creditThresholdMin float64 // 额度下限百分比（0-100），当额度<下限时才执行重置
+	useMaxThreshold    bool    // true=使用上限模式，false=使用下限模式
+	enableFirstReset   bool    // 是否启用18:55重置
+	loop               *loopController
 }
 
 // NewMultiSchedulerWithAccounts 创建新的多账号调度器（使用指定的账号列表）
@@ -46,21 +43,17 @@ func NewMultiSchedulerWithConfig(storage *storage.Storage, baseURL string, activ
 		return nil, fmt.Errorf("加载时区失败 (%s): %w", timezone, err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	return &MultiScheduler{
-		activeAccounts:        activeAccounts,
-		storage:               storage,
-		baseURL:               baseURL,
-		targetPlans:           targetPlans,
-		location:              loc,
-		ctx:                   ctx,
-		cancel:                cancel,
-		lastSubscriptionCheck: time.Time{},
-		creditThresholdMax:    thresholdMax,
-		creditThresholdMin:    thresholdMin,
-		useMaxThreshold:       useMax,
-		enableFirstReset:      enableFirstReset,
+		activeAccounts:     activeAccounts,
+		storage:            storage,
+		baseURL:            baseURL,
+		targetPlans:        targetPlans,
+		location:           loc,
+		creditThresholdMax: thresholdMax,
+		creditThresholdMin: thresholdMin,
+		useMaxThreshold:    useMax,
+		enableFirstReset:   enableFirstReset,
+		loop:               newLoopController(SubscriptionCheckInterval),
 	}, nil
 }
 
@@ -93,44 +86,14 @@ func (s *MultiScheduler) Start() {
 	}
 
 	// 启动时立即检查所有账号的订阅状态
-	go s.checkAllAccountsStatus()
-
-	// 启动时立即检查一次重置任务
-	go s.checkAndExecute()
-
-	// 每分钟检查一次
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			logger.Info("多账号调度器已停止")
-			return
-		case <-ticker.C:
-			// 定期检查所有账号的订阅状态
-			s.periodicSubscriptionCheck()
-			// 检查重置任务
-			s.checkAndExecute()
-		}
-	}
+	s.loop.run(s.checkAllAccountsStatus, s.checkAndExecute)
+	logger.Info("多账号调度器已停止")
 }
 
 // Stop 停止调度器
 func (s *MultiScheduler) Stop() {
 	logger.Info("正在停止多账号调度器...")
-	s.cancel()
-}
-
-// periodicSubscriptionCheck 定期检查所有账号的订阅状态
-func (s *MultiScheduler) periodicSubscriptionCheck() {
-	now := time.Now()
-
-	// 每小时检查一次
-	if now.Sub(s.lastSubscriptionCheck) >= SubscriptionCheckInterval {
-		s.checkAllAccountsStatus()
-		s.lastSubscriptionCheck = now
-	}
+	s.loop.Stop()
 }
 
 // checkAllAccountsStatus 检查所有活跃账号的订阅状态
@@ -180,8 +143,8 @@ func (s *MultiScheduler) checkAllAccountsStatus() {
 // updateAccountInfo 更新账号信息
 func (s *MultiScheduler) updateAccountInfo(employeeEmail string, sub *models.Subscription) {
 	accountInfo := &models.AccountInfo{
-		KeyID:              "",  // 从配置中获取
-		APIKeyName:         "",  // 从配置中获取
+		KeyID:              "", // 从配置中获取
+		APIKeyName:         "", // 从配置中获取
 		EmployeeID:         sub.EmployeeID,
 		EmployeeName:       sub.EmployeeName,
 		EmployeeEmail:      sub.EmployeeEmail,

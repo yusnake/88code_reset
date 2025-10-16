@@ -7,27 +7,121 @@ import (
 	"strings"
 	"time"
 
-	"code88reset/internal/account"
 	"code88reset/internal/api"
 	appconfig "code88reset/internal/config"
+	"code88reset/internal/models"
 	"code88reset/internal/scheduler"
 	"code88reset/internal/storage"
 	"code88reset/pkg/logger"
 )
 
+type accountManager interface {
+	ListAccounts() ([]models.AccountConfig, error)
+	GetAccountCount() (total, enabled, disabled int, err error)
+	SyncAccountsFromAPIKeys(apiKeys []string, targetPlans []string) error
+	GetActiveAccountsFromAPIKeys(apiKeys []string) ([]models.AccountConfig, error)
+}
+
+type apiClient interface {
+	TestConnection() error
+	GetSubscriptions() ([]models.Subscription, error)
+	GetTargetSubscription() (*models.Subscription, error)
+	ResetCredits(subscriptionID int) (*models.ResetResponse, error)
+}
+
+type dependencies struct {
+	newClient          func(store *storage.Storage, baseURL, apiKey string, plans []string) apiClient
+	runSingleScheduler func(app *App, client apiClient) error
+	runMultiScheduler  func(app *App, accounts []models.AccountConfig) error
+	manualReset        func(app *App, client apiClient) error
+	sleep              func(d time.Duration)
+}
+
 // App 负责根据配置协调运行模式
 type App struct {
 	Config     appconfig.Settings
 	Store      *storage.Storage
-	AccountMgr *account.Manager
+	AccountMgr accountManager
+	deps       dependencies
 }
 
 // New 创建新的应用实例
-func New(cfg appconfig.Settings, store *storage.Storage, accountMgr *account.Manager) *App {
+func New(cfg appconfig.Settings, store *storage.Storage, accountMgr accountManager) *App {
 	return &App{
 		Config:     cfg,
 		Store:      store,
 		AccountMgr: accountMgr,
+		deps:       defaultDependencies(),
+	}
+}
+
+func defaultDependencies() dependencies {
+	return dependencies{
+		newClient: func(store *storage.Storage, baseURL, apiKey string, plans []string) apiClient {
+			client := api.NewClient(baseURL, apiKey, plans)
+			client.Storage = store
+			return client
+		},
+		runSingleScheduler: func(app *App, client apiClient) error {
+			realClient, ok := client.(*api.Client)
+			if !ok {
+				return fmt.Errorf("unsupported api client type %T", client)
+			}
+			sched, err := scheduler.NewSchedulerWithConfig(
+				realClient,
+				app.Store,
+				app.Config.Timezone,
+				app.Config.CreditThresholdMax,
+				app.Config.CreditThresholdMin,
+				app.Config.UseMaxThreshold,
+				app.Config.EnableFirstReset,
+			)
+			if err != nil {
+				return err
+			}
+
+			sched.Start()
+			return nil
+		},
+		runMultiScheduler: func(app *App, accounts []models.AccountConfig) error {
+			multiSched, err := scheduler.NewMultiSchedulerWithConfig(
+				app.Store,
+				app.Config.BaseURL,
+				accounts,
+				app.Config.Plans,
+				app.Config.Timezone,
+				app.Config.CreditThresholdMax,
+				app.Config.CreditThresholdMin,
+				app.Config.UseMaxThreshold,
+				app.Config.EnableFirstReset,
+			)
+			if err != nil {
+				return err
+			}
+
+			multiSched.Start()
+			return nil
+		},
+		manualReset: func(app *App, client apiClient) error {
+			realClient, ok := client.(*api.Client)
+			if !ok {
+				return fmt.Errorf("unsupported api client type %T", client)
+			}
+			sched, err := scheduler.NewSchedulerWithConfig(
+				realClient,
+				app.Store,
+				app.Config.Timezone,
+				app.Config.CreditThresholdMax,
+				app.Config.CreditThresholdMin,
+				app.Config.UseMaxThreshold,
+				app.Config.EnableFirstReset,
+			)
+			if err != nil {
+				return err
+			}
+			return sched.ManualReset()
+		},
+		sleep: time.Sleep,
 	}
 }
 
@@ -52,13 +146,13 @@ func (a *App) Run() error {
 			return fmt.Errorf("missing api key for test mode")
 		}
 		logger.Info("测试第一个 API Key: %s", appconfig.MaskAPIKey(keys[0]))
-		apiClient := a.newAPIClient(keys[0])
-		return a.runTestMode(apiClient)
+		client := a.newAPIClient(keys[0])
+		return a.runTestMode(client)
 	case "run":
 		if len(keys) == 1 {
 			logger.Info("单账号模式 - API Key: %s", appconfig.MaskAPIKey(keys[0]))
-			apiClient := a.newAPIClient(keys[0])
-			return a.runSchedulerMode(apiClient)
+			client := a.newAPIClient(keys[0])
+			return a.runSchedulerMode(client)
 		}
 
 		logger.Info("多账号模式 - 检测到 %d 个 API Key", len(keys))
@@ -72,8 +166,8 @@ func (a *App) Run() error {
 			logger.Warn("检测到 %d 个 API Key，手动模式只会重置第一个账号", len(keys))
 		}
 		logger.Info("手动重置账号 - API Key: %s", appconfig.MaskAPIKey(keys[0]))
-		apiClient := a.newAPIClient(keys[0])
-		return a.runManualMode(apiClient)
+		client := a.newAPIClient(keys[0])
+		return a.runManualMode(client)
 	default:
 		logger.Error("未知的运行模式: %s", a.Config.Mode)
 		logger.Error("支持的模式: test, run, manual, list")
@@ -81,14 +175,14 @@ func (a *App) Run() error {
 	}
 }
 
-func (a *App) runTestMode(apiClient *api.Client) error {
+func (a *App) runTestMode(client apiClient) error {
 	logger.Info("\n========================================")
 	logger.Info("测试模式 - 测试接口连接")
 	logger.Info("========================================\n")
 
 	// 测试 1: 连接测试
 	logger.Info("【测试 1/3】测试 API 连接...")
-	if err := apiClient.TestConnection(); err != nil {
+	if err := client.TestConnection(); err != nil {
 		logger.Error("连接测试失败: %v", err)
 		return err
 	}
@@ -96,7 +190,7 @@ func (a *App) runTestMode(apiClient *api.Client) error {
 
 	// 测试 2: 获取订阅列表
 	logger.Info("【测试 2/3】获取订阅列表...")
-	subscriptions, err := apiClient.GetSubscriptions()
+	subscriptions, err := client.GetSubscriptions()
 	if err != nil {
 		logger.Error("获取订阅列表失败: %v", err)
 		return err
@@ -115,7 +209,7 @@ func (a *App) runTestMode(apiClient *api.Client) error {
 
 	// 测试 3: 获取目标订阅
 	logger.Info("【测试 3/3】查找目标订阅...")
-	targetSub, err := apiClient.GetTargetSubscription()
+	targetSub, err := client.GetTargetSubscription()
 	if err != nil {
 		logger.Error("获取目标订阅失败: %v", err)
 		logger.Error("提示: 请检查 -plans 参数是否设置正确")
@@ -157,52 +251,28 @@ func (a *App) runTestMode(apiClient *api.Client) error {
 	return nil
 }
 
-func (a *App) runSchedulerMode(apiClient *api.Client) error {
+func (a *App) runSchedulerMode(client apiClient) error {
 	logger.Info("\n========================================")
 	logger.Info("调度器模式 - 启动定时任务")
 	logger.Info("========================================\n")
 
-	sched, err := scheduler.NewSchedulerWithConfig(
-		apiClient,
-		a.Store,
-		a.Config.Timezone,
-		a.Config.CreditThresholdMax,
-		a.Config.CreditThresholdMin,
-		a.Config.UseMaxThreshold,
-		a.Config.EnableFirstReset,
-	)
-	if err != nil {
+	logger.Info("调度器已启动，等待定时任务触发...")
+	logger.Info("按 Ctrl+C 停止\n")
+
+	if err := a.deps.runSingleScheduler(a, client); err != nil {
 		logger.Error("创建调度器失败: %v", err)
 		return err
 	}
 
-	logger.Info("调度器已启动，等待定时任务触发...")
-	logger.Info("按 Ctrl+C 停止\n")
-
-	sched.Start()
 	return nil
 }
 
-func (a *App) runManualMode(apiClient *api.Client) error {
+func (a *App) runManualMode(client apiClient) error {
 	logger.Info("\n========================================")
 	logger.Info("手动重置模式")
 	logger.Info("========================================\n")
 
-	sched, err := scheduler.NewSchedulerWithConfig(
-		apiClient,
-		a.Store,
-		a.Config.Timezone,
-		a.Config.CreditThresholdMax,
-		a.Config.CreditThresholdMin,
-		a.Config.UseMaxThreshold,
-		a.Config.EnableFirstReset,
-	)
-	if err != nil {
-		logger.Error("创建调度器失败: %v", err)
-		return err
-	}
-
-	targetSub, err := apiClient.GetTargetSubscription()
+	targetSub, err := client.GetTargetSubscription()
 	if err != nil {
 		logger.Error("获取目标订阅失败: %v", err)
 		return err
@@ -239,13 +309,13 @@ func (a *App) runManualMode(apiClient *api.Client) error {
 
 	logger.Info("\n开始执行重置...")
 
-	if err := sched.ManualReset(); err != nil {
+	if err := a.deps.manualReset(a, client); err != nil {
 		logger.Error("手动重置失败: %v", err)
 		return err
 	}
 
 	logger.Info("正在调用重置接口...")
-	resetResp, err := apiClient.ResetCredits(targetSub.ID)
+	resetResp, err := client.ResetCredits(targetSub.ID)
 	if err != nil {
 		logger.Error("重置失败: %v", err)
 		return err
@@ -255,8 +325,8 @@ func (a *App) runManualMode(apiClient *api.Client) error {
 	logger.Info("响应: %s", resetResp.Message)
 
 	logger.Info("\n验证重置结果...")
-	time.Sleep(3 * time.Second)
-	targetSubAfter, err := apiClient.GetTargetSubscription()
+	a.deps.sleep(3 * time.Second)
+	targetSubAfter, err := client.GetTargetSubscription()
 	if err != nil {
 		logger.Warn("获取验证信息失败: %v", err)
 	} else {
@@ -357,34 +427,20 @@ func (a *App) runMultiAccountMode(apiKeys []string) error {
 	}
 
 	logger.Info("\n步骤 3/3: 启动调度器...")
-	multiSched, err := scheduler.NewMultiSchedulerWithConfig(
-		a.Store,
-		a.Config.BaseURL,
-		activeAccounts,
-		a.Config.Plans,
-		a.Config.Timezone,
-		a.Config.CreditThresholdMax,
-		a.Config.CreditThresholdMin,
-		a.Config.UseMaxThreshold,
-		a.Config.EnableFirstReset,
-	)
-	if err != nil {
-		logger.Error("创建多账号调度器失败: %v", err)
-		return err
-	}
-
 	logger.Info("\n========================================")
 	logger.Info("多账号调度器已启动")
 	logger.Info("将为 %d 个账号执行定时重置", len(activeAccounts))
 	logger.Info("按 Ctrl+C 停止")
 	logger.Info("========================================\n")
 
-	multiSched.Start()
+	if err := a.deps.runMultiScheduler(a, activeAccounts); err != nil {
+		logger.Error("创建多账号调度器失败: %v", err)
+		return err
+	}
+
 	return nil
 }
 
-func (a *App) newAPIClient(key string) *api.Client {
-	client := api.NewClient(a.Config.BaseURL, key, a.Config.Plans)
-	client.Storage = a.Store
-	return client
+func (a *App) newAPIClient(key string) apiClient {
+	return a.deps.newClient(a.Store, a.Config.BaseURL, key, a.Config.Plans)
 }

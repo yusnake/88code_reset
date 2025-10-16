@@ -1,7 +1,6 @@
 package scheduler
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -31,16 +30,14 @@ const (
 
 // Scheduler 调度器
 type Scheduler struct {
-	apiClient              *api.Client
-	storage                *storage.Storage
-	location               *time.Location
-	ctx                    context.Context
-	cancel                 context.CancelFunc
-	lastSubscriptionCheck  time.Time
-	creditThresholdMax     float64 // 额度上限百分比（0-100），当额度>上限时跳过重置
-	creditThresholdMin     float64 // 额度下限百分比（0-100），当额度<下限时才执行重置
-	useMaxThreshold        bool    // true=使用上限模式，false=使用下限模式
-	enableFirstReset       bool    // 是否启用18:55重置
+	apiClient          *api.Client
+	storage            *storage.Storage
+	location           *time.Location
+	creditThresholdMax float64 // 额度上限百分比（0-100），当额度>上限时跳过重置
+	creditThresholdMin float64 // 额度下限百分比（0-100），当额度<下限时才执行重置
+	useMaxThreshold    bool    // true=使用上限模式，false=使用下限模式
+	enableFirstReset   bool    // 是否启用18:55重置
+	loop               *loopController
 }
 
 // NewScheduler 创建新的调度器
@@ -61,19 +58,15 @@ func NewSchedulerWithConfig(apiClient *api.Client, storage *storage.Storage, tim
 		return nil, fmt.Errorf("加载时区失败 (%s): %w", timezone, err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	return &Scheduler{
-		apiClient:             apiClient,
-		storage:               storage,
-		location:              loc,
-		ctx:                   ctx,
-		cancel:                cancel,
-		lastSubscriptionCheck: time.Time{}, // 初始化为零值，确保首次检查
-		creditThresholdMax:    thresholdMax,
-		creditThresholdMin:    thresholdMin,
-		useMaxThreshold:       useMax,
-		enableFirstReset:      enableFirstReset,
+		apiClient:          apiClient,
+		storage:            storage,
+		location:           loc,
+		creditThresholdMax: thresholdMax,
+		creditThresholdMin: thresholdMin,
+		useMaxThreshold:    useMax,
+		enableFirstReset:   enableFirstReset,
+		loop:               newLoopController(SubscriptionCheckInterval),
 	}, nil
 }
 
@@ -100,46 +93,14 @@ func (s *Scheduler) Start() {
 
 	logger.Info("订阅状态检查间隔: %v", SubscriptionCheckInterval)
 	logger.Info("========================================")
-
-	// 启动时立即验证目标订阅
-	go s.checkSubscriptionStatus()
-
-	// 启动时立即检查一次重置任务
-	go s.checkAndExecute()
-
-	// 每分钟检查一次
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			logger.Info("调度器已停止")
-			return
-		case <-ticker.C:
-			// 定期检查订阅状态
-			s.periodicSubscriptionCheck()
-			// 检查重置任务
-			s.checkAndExecute()
-		}
-	}
+	s.loop.run(s.checkSubscriptionStatus, s.checkAndExecute)
+	logger.Info("调度器已停止")
 }
 
 // Stop 停止调度器
 func (s *Scheduler) Stop() {
 	logger.Info("正在停止调度器...")
-	s.cancel()
-}
-
-// periodicSubscriptionCheck 定期检查订阅状态
-func (s *Scheduler) periodicSubscriptionCheck() {
-	now := time.Now()
-
-	// 检查是否需要更新订阅状态（每小时一次）
-	if now.Sub(s.lastSubscriptionCheck) >= SubscriptionCheckInterval {
-		s.checkSubscriptionStatus()
-		s.lastSubscriptionCheck = now
-	}
+	s.loop.Stop()
 }
 
 // checkSubscriptionStatus 检查并验证目标订阅状态
@@ -169,9 +130,9 @@ func (s *Scheduler) checkSubscriptionStatus() {
 
 	// 警告：如果检测到 PAYGO 类型（理论上不应该出现，因为在 GetTargetSubscription 中已过滤）
 	isPAYGO := sub.SubscriptionName == "PAYGO" ||
-	           sub.SubscriptionPlan.SubscriptionName == "PAYGO" ||
-	           sub.SubscriptionPlan.PlanType == "PAYGO" ||
-	           sub.SubscriptionPlan.PlanType == "PAY_PER_USE"
+		sub.SubscriptionPlan.SubscriptionName == "PAYGO" ||
+		sub.SubscriptionPlan.PlanType == "PAYGO" ||
+		sub.SubscriptionPlan.PlanType == "PAY_PER_USE"
 
 	if isPAYGO {
 		logger.Error("🚨 警告：检测到 PAYGO 类型订阅 (名称=%s, 类型=%s)，这不应该发生！",
