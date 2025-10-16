@@ -40,13 +40,13 @@
 
 ### 方式 1: 使用预编译二进制文件（推荐）
 
-从 [Releases 页面](https://github.com/yourusername/88code_reset/releases) 下载适合你系统的版本。
+从 [Releases 页面](https://github.com/Vulpecula-Studio/88code_reset/releases) 下载适合你系统的版本。
 
 **支持平台**：Linux (amd64/arm64/armv7)、macOS (Intel/Apple Silicon)、Windows (amd64/arm64)
 
 ```bash
 # 下载示例（以 Linux amd64 为例）
-wget https://github.com/yourusername/88code_reset/releases/latest/download/88code_reset-linux-amd64.tar.gz
+wget https://github.com/Vulpecula-Studio/88code_reset/releases/latest/download/88code_reset-linux-amd64.tar.gz
 tar xzf 88code_reset-linux-amd64.tar.gz
 chmod +x 88code_reset-linux-amd64
 
@@ -97,10 +97,10 @@ docker-compose logs -f reset-scheduler
 
 **Docker 命令**
 ```bash
-docker pull ghcr.io/yourusername/88code_reset:latest
+docker pull ghcr.io/vulpecula-studio/88code_reset:latest
 
 # 测试模式
-docker run --rm -e API_KEY=your_key ghcr.io/yourusername/88code_reset:latest -mode=test
+docker run --rm -e API_KEY=your_key ghcr.io/vulpecula-studio/88code_reset:latest -mode=test
 
 # 后台运行
 docker run -d --name 88code-reset \
@@ -108,7 +108,7 @@ docker run -d --name 88code-reset \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/logs:/app/logs \
   --restart unless-stopped \
-  ghcr.io/yourusername/88code_reset:latest -mode=run
+  ghcr.io/vulpecula-studio/88code_reset:latest -mode=run
 ```
 
 ## 运行模式
