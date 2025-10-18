@@ -38,6 +38,8 @@ type Scheduler struct {
 	useMaxThreshold    bool    // true=使用上限模式，false=使用下限模式
 	enableFirstReset   bool    // 是否启用18:55重置
 	loop               *loopController
+	accountUpdater     accountUpdater
+	logAgg             *logAggregator
 }
 
 // NewScheduler 创建新的调度器
@@ -67,6 +69,8 @@ func NewSchedulerWithConfig(apiClient *api.Client, storage *storage.Storage, tim
 		useMaxThreshold:    useMax,
 		enableFirstReset:   enableFirstReset,
 		loop:               newLoopController(SubscriptionCheckInterval),
+		accountUpdater:     newAccountUpdater(storage),
+		logAgg:             newLogAggregator("单账号调度器", 5*time.Minute),
 	}, nil
 }
 
@@ -94,6 +98,7 @@ func (s *Scheduler) Start() {
 	logger.Info("订阅状态检查间隔: %v", SubscriptionCheckInterval)
 	logger.Info("========================================")
 	s.loop.run(s.checkSubscriptionStatus, s.checkAndExecute)
+	s.logAgg.Flush()
 	logger.Info("调度器已停止")
 }
 
@@ -101,6 +106,7 @@ func (s *Scheduler) Start() {
 func (s *Scheduler) Stop() {
 	logger.Info("正在停止调度器...")
 	s.loop.Stop()
+	s.logAgg.Flush()
 }
 
 // checkSubscriptionStatus 检查并验证目标订阅状态
@@ -146,20 +152,23 @@ func (s *Scheduler) checkAndExecute() {
 	currentHour := now.Hour()
 	currentMinute := now.Minute()
 
-	logger.Debug("当前北京时间: %s", now.Format("2006-01-02 15:04:05"))
+	s.logAgg.Add("检查时间: %s", now.Format("2006-01-02 15:04:05"))
 
 	// 检查是否需要执行第一次重置（18:50）
 	if currentHour == FirstResetHour && currentMinute == FirstResetMinute {
 		if !s.enableFirstReset {
 			logger.Debug("18:55重置已禁用，跳过")
+			s.logAgg.Flush()
 			return
 		}
+		s.logAgg.Flush()
 		s.executeReset("first")
 		return
 	}
 
 	// 检查是否需要执行第二次重置（23:55）
 	if currentHour == SecondResetHour && currentMinute == SecondResetMinute {
+		s.logAgg.Flush()
 		s.executeReset("second")
 		return
 	}
@@ -167,6 +176,7 @@ func (s *Scheduler) checkAndExecute() {
 
 // executeReset 执行重置逻辑
 func (s *Scheduler) executeReset(resetType string) {
+	s.logAgg.Flush()
 	logger.Info("========================================")
 	logger.Info("触发%s重置任务", map[string]string{"first": "第一次", "second": "第二次"}[resetType])
 	logger.Info("========================================")
@@ -317,22 +327,7 @@ func (s *Scheduler) executeReset(resetType string) {
 
 // updateAccountInfo 更新账号信息
 func (s *Scheduler) updateAccountInfo(sub *models.Subscription) {
-	account := &models.AccountInfo{
-		EmployeeID:         sub.EmployeeID,
-		EmployeeName:       sub.EmployeeName,
-		EmployeeEmail:      sub.EmployeeEmail,
-		FreeSubscriptionID: sub.ID,
-		CurrentCredits:     sub.CurrentCredits,
-		CreditLimit:        sub.SubscriptionPlan.CreditLimit,
-		ResetTimes:         sub.ResetTimes,
-		LastCreditReset:    sub.LastCreditReset,
-	}
-
-	if err := s.storage.SaveAccountInfo(account); err != nil {
-		logger.Error("保存账号信息失败: %v", err)
-	} else {
-		logger.Debug("账号信息已更新")
-	}
+	s.accountUpdater.UpdateGlobal(sub)
 }
 
 // updateStatusAfterSuccess 重置成功后更新状态

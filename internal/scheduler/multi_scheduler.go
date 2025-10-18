@@ -23,6 +23,8 @@ type MultiScheduler struct {
 	useMaxThreshold    bool    // true=使用上限模式，false=使用下限模式
 	enableFirstReset   bool    // 是否启用18:55重置
 	loop               *loopController
+	accountUpdater     accountUpdater
+	logAgg             *logAggregator
 }
 
 // NewMultiSchedulerWithAccounts 创建新的多账号调度器（使用指定的账号列表）
@@ -43,6 +45,8 @@ func NewMultiSchedulerWithConfig(storage *storage.Storage, baseURL string, activ
 		return nil, fmt.Errorf("加载时区失败 (%s): %w", timezone, err)
 	}
 
+	updater := newAccountUpdater(storage)
+
 	return &MultiScheduler{
 		activeAccounts:     activeAccounts,
 		storage:            storage,
@@ -54,6 +58,8 @@ func NewMultiSchedulerWithConfig(storage *storage.Storage, baseURL string, activ
 		useMaxThreshold:    useMax,
 		enableFirstReset:   enableFirstReset,
 		loop:               newLoopController(SubscriptionCheckInterval),
+		accountUpdater:     updater,
+		logAgg:             newLogAggregator("多账号调度器", 5*time.Minute),
 	}, nil
 }
 
@@ -87,6 +93,7 @@ func (s *MultiScheduler) Start() {
 
 	// 启动时立即检查所有账号的订阅状态
 	s.loop.run(s.checkAllAccountsStatus, s.checkAndExecute)
+	s.logAgg.Flush()
 	logger.Info("多账号调度器已停止")
 }
 
@@ -94,6 +101,7 @@ func (s *MultiScheduler) Start() {
 func (s *MultiScheduler) Stop() {
 	logger.Info("正在停止多账号调度器...")
 	s.loop.Stop()
+	s.logAgg.Flush()
 }
 
 // checkAllAccountsStatus 检查所有活跃账号的订阅状态
@@ -142,23 +150,7 @@ func (s *MultiScheduler) checkAllAccountsStatus() {
 
 // updateAccountInfo 更新账号信息
 func (s *MultiScheduler) updateAccountInfo(employeeEmail string, sub *models.Subscription) {
-	accountInfo := &models.AccountInfo{
-		KeyID:              "", // 从配置中获取
-		APIKeyName:         "", // 从配置中获取
-		EmployeeID:         sub.EmployeeID,
-		EmployeeName:       sub.EmployeeName,
-		EmployeeEmail:      sub.EmployeeEmail,
-		FreeSubscriptionID: sub.ID,
-		CurrentCredits:     sub.CurrentCredits,
-		CreditLimit:        sub.SubscriptionPlan.CreditLimit,
-		ResetTimes:         sub.ResetTimes,
-		LastCreditReset:    sub.LastCreditReset,
-		LastUpdated:        time.Now(),
-	}
-
-	if err := s.storage.SaveAccountInfoByEmail(employeeEmail, accountInfo); err != nil {
-		logger.Warn("保存账号信息失败 (Email=%s): %v", employeeEmail, err)
-	}
+	s.accountUpdater.UpdateByEmail(employeeEmail, sub)
 }
 
 // checkAndExecute 检查并执行重置任务
@@ -167,20 +159,23 @@ func (s *MultiScheduler) checkAndExecute() {
 	currentHour := now.Hour()
 	currentMinute := now.Minute()
 
-	logger.Debug("当前时间: %s", now.Format("2006-01-02 15:04:05"))
+	s.logAgg.Add("检查时间: %s", now.Format("2006-01-02 15:04:05"))
 
 	// 检查是否需要执行第一次重置（18:50）
 	if currentHour == FirstResetHour && currentMinute == FirstResetMinute {
 		if !s.enableFirstReset {
 			logger.Debug("18:55重置已禁用，跳过")
+			s.logAgg.Flush()
 			return
 		}
+		s.logAgg.Flush()
 		s.executeResetForAllAccounts("first")
 		return
 	}
 
 	// 检查是否需要执行第二次重置（23:55）
 	if currentHour == SecondResetHour && currentMinute == SecondResetMinute {
+		s.logAgg.Flush()
 		s.executeResetForAllAccounts("second")
 		return
 	}
@@ -188,6 +183,7 @@ func (s *MultiScheduler) checkAndExecute() {
 
 // executeResetForAllAccounts 为所有活跃账号执行重置
 func (s *MultiScheduler) executeResetForAllAccounts(resetType string) {
+	s.logAgg.Flush()
 	resetName := map[string]string{"first": "第一次", "second": "第二次"}[resetType]
 
 	logger.Info("========================================")
