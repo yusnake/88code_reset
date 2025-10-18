@@ -410,9 +410,14 @@ TZ=Asia/Shanghai          # 北京/上海时区 (UTC+8)
 
 支持的格式：
 - `API_KEY=xxx` 或 `api-key=xxx`
-- `TARGET_PLANS=xxx` 或通过命令行参数 `-plans=xxx`
-- `TZ=xxx` 或 `TIMEZONE=xxx` 或通过命令行参数 `-timezone=xxx`
-- `.env` 加载优先级：命令行参数 > 环境变量 > `ENV_FILE` 指向的文件 > 默认 `.env`
+- `API_KEYS=xxx,yyy`（多账号）
+- `PLANS=xxx` 或命令行 `-plans=xxx`
+- `TZ=xxx` 或 `TIMEZONE=xxx` 或命令行 `-timezone=xxx`
+- `CREDIT_THRESHOLD_MAX=83`：上限模式阈值，单位为百分比（0-100）。当额度高于该值时，18:50 重置会被跳过以保留 23:55 机会。
+- `CREDIT_THRESHOLD_MIN=50`：下限模式阈值，单位为百分比（0-100）。当额度高于该值时，18:50 重置会被跳过，只在额度低于下限时执行。
+- `ENABLE_FIRST_RESET=true/false`：是否启用 18:55（18:50）首次重置。支持 true/false/1/0/yes/no/on/off/enabled/disabled。
+- `ENV_FILE=/path/to/.env`：可通过环境变量或命令行前缀指定自定义 `.env` 路径。
+- `.env` 加载优先级：命令行参数 > 环境变量 > `ENV_FILE` 指向的文件 > 默认工作目录 `.env`
 
 ## 核心机制
 
