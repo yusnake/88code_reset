@@ -398,12 +398,21 @@ TZ=Asia/Shanghai          # 北京/上海时区 (UTC+8)
 # 默认重置时间为北京时间：
 # - 第一次: 18:50
 # - 第二次: 23:55
+
+# 自定义 .env 文件路径（可选）
+# 默认读取当前工作目录下的 .env
+# 如果希望使用其他路径，可以设置环境变量 ENV_FILE
+# 示例：
+# export ENV_FILE=/etc/88code/app.env
+# 或通过命令行指定：
+# ENV_FILE=/etc/88code/app.env go run cmd/reset/main.go -mode=run
 ```
 
 支持的格式：
 - `API_KEY=xxx` 或 `api-key=xxx`
 - `TARGET_PLANS=xxx` 或通过命令行参数 `-plans=xxx`
 - `TZ=xxx` 或 `TIMEZONE=xxx` 或通过命令行参数 `-timezone=xxx`
+- `.env` 加载优先级：命令行参数 > 环境变量 > `ENV_FILE` 指向的文件 > 默认 `.env`
 
 ## 核心机制
 
