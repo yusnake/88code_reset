@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"code88reset/internal/models"
@@ -14,11 +15,13 @@ import (
 
 // Client API 客户端
 type Client struct {
-	BaseURL       string
-	APIKey        string
-	HTTPClient    *http.Client
-	TargetPlans   []string // 目标订阅计划名称列表
-	Storage       interface{ SaveAPIResponse(endpoint, method string, requestBody, responseBody []byte, statusCode int) error } // 存储接口，用于保存响应
+	BaseURL     string
+	APIKey      string
+	HTTPClient  *http.Client
+	TargetPlans []string // 目标订阅计划名称列表
+	Storage     interface {
+		SaveAPIResponse(endpoint, method string, requestBody, responseBody []byte, statusCode int) error
+	} // 存储接口，用于保存响应
 }
 
 // NewClient 创建新的 API 客户端
@@ -140,26 +143,19 @@ func (c *Client) GetTargetSubscription() (*models.Subscription, error) {
 		return nil, err
 	}
 
-	for _, sub := range subscriptions {
-		// 检查是否为目标订阅计划
-		isTarget := false
-		for _, targetPlan := range c.TargetPlans {
-			if sub.SubscriptionName == targetPlan || sub.SubscriptionPlan.SubscriptionName == targetPlan {
-				isTarget = true
-				break
-			}
-		}
+	targetSet := buildTargetPlanSet(c.TargetPlans)
 
-		if !isTarget {
+	for _, sub := range subscriptions {
+		if !matchesTargetPlan(sub, targetSet) {
 			continue
 		}
 
 		// 🚨 PAYGO 保护：永远不重置 PAYGO 类型订阅
 		// 检查套餐名称或 PlanType 是否为 PAYGO/PAY_PER_USE
 		isPAYGO := sub.SubscriptionName == "PAYGO" ||
-		           sub.SubscriptionPlan.SubscriptionName == "PAYGO" ||
-		           sub.SubscriptionPlan.PlanType == "PAYGO" ||
-		           sub.SubscriptionPlan.PlanType == "PAY_PER_USE"
+			sub.SubscriptionPlan.SubscriptionName == "PAYGO" ||
+			sub.SubscriptionPlan.PlanType == "PAYGO" ||
+			sub.SubscriptionPlan.PlanType == "PAY_PER_USE"
 
 		if isPAYGO {
 			logger.Error("🚨 检测到 PAYGO 订阅 (ID=%d, 名称=%s, 类型=%s)，已自动跳过",
@@ -199,9 +195,9 @@ func (c *Client) ResetCredits(subscriptionID int) (*models.ResetResponse, error)
 			if sub.ID == subscriptionID {
 				// 检查是否为 PAYGO 类型
 				isPAYGO := sub.SubscriptionName == "PAYGO" ||
-				           sub.SubscriptionPlan.SubscriptionName == "PAYGO" ||
-				           sub.SubscriptionPlan.PlanType == "PAYGO" ||
-				           sub.SubscriptionPlan.PlanType == "PAY_PER_USE"
+					sub.SubscriptionPlan.SubscriptionName == "PAYGO" ||
+					sub.SubscriptionPlan.PlanType == "PAYGO" ||
+					sub.SubscriptionPlan.PlanType == "PAY_PER_USE"
 
 				if isPAYGO {
 					return nil, fmt.Errorf("🚨 拒绝重置：订阅 ID=%d (名称=%s, 类型=%s) 为 PAYGO 类型，不允许重置",
@@ -289,4 +285,85 @@ func (c *Client) GetAccountInfo() (*models.AccountConfig, error) {
 		accountConfig.KeyID, accountConfig.Name, accountConfig.EmployeeID, accountConfig.EmployeeEmail)
 
 	return accountConfig, nil
+}
+
+// buildTargetPlanSet 生成标准化的目标套餐集合，方便快速匹配
+func buildTargetPlanSet(targetPlans []string) map[string]struct{} {
+	set := make(map[string]struct{})
+	for _, plan := range targetPlans {
+		if normalized := normalizePlanIdentifier(plan); normalized != "" {
+			set[normalized] = struct{}{}
+		}
+	}
+	return set
+}
+
+// matchesTargetPlan 判断订阅是否匹配目标套餐
+func matchesTargetPlan(sub models.Subscription, normalizedTargets map[string]struct{}) bool {
+	if !isMonthlyPlan(sub) {
+		return false
+	}
+
+	if len(normalizedTargets) == 0 {
+		return true
+	}
+
+	candidates := []string{
+		sub.SubscriptionName,
+		sub.SubscriptionPlan.SubscriptionName,
+	}
+
+	for _, candidate := range candidates {
+		if _, ok := normalizedTargets[normalizePlanIdentifier(candidate)]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// normalizePlanIdentifier 标准化套餐标识，便于匹配不同格式
+func normalizePlanIdentifier(input string) string {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return ""
+	}
+
+	lower := strings.ToLower(trimmed)
+
+	// 移除常见分隔符/括号等，保留数字与中英文字符
+	replacer := strings.NewReplacer(
+		"（", "",
+		"）", "",
+		"(", "",
+		")", "",
+		"-", "",
+		"_", "",
+		" ", "",
+		"\t", "",
+		"\n", "",
+		"\r", "",
+		"|", "",
+		"/", "",
+		"\\", "",
+		":", "",
+		";", "",
+		"@", "",
+		"#", "",
+		"+", "",
+		",", "",
+		"，", "",
+		".", "",
+	)
+
+	return replacer.Replace(lower)
+}
+
+// isMonthlyPlan 判断订阅是否属于 MONTHLY 类型（可重置）
+func isMonthlyPlan(sub models.Subscription) bool {
+	planType := strings.TrimSpace(strings.ToUpper(sub.SubscriptionPlan.PlanType))
+	if planType == "" {
+		return true
+	}
+	return planType == "MONTHLY"
 }

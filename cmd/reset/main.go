@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"code88reset/internal/account"
 	"code88reset/internal/app"
@@ -20,7 +21,7 @@ var (
 	dataDir            = flag.String("datadir", appconfig.DefaultDataDir, "数据目录")
 	logDir             = flag.String("logdir", appconfig.DefaultLogDir, "日志目录")
 	skipConfirm        = flag.Bool("yes", false, "跳过确认提示（仅用于手动重置）")
-	planNames          = flag.String("plans", "FREE", "要重置的订阅计划名称，多个用逗号分隔（例如: FREE,PRO,PLUS）")
+	planNames          = flag.String("plans", "", "要重置的订阅计划名称（匹配 subscriptionName），多个用逗号分隔；留空表示所有 MONTHLY 套餐")
 	timezone           = flag.String("timezone", "", "时区设置 (例如: Asia/Shanghai, Asia/Hong_Kong, UTC)")
 	creditThresholdMax = flag.Float64("threshold-max", 0, "额度上限百分比(0-100)，当额度>上限时跳过18点重置，0表示使用环境变量或默认值83")
 	creditThresholdMin = flag.Float64("threshold-min", 0, "额度下限百分比(0-100)，当额度<下限时才执行18点重置，0表示不使用下限")
@@ -49,7 +50,11 @@ func main() {
 	logger.Info("时区设置: %s", tz)
 	logger.Info("数据目录: %s", *dataDir)
 	logger.Info("日志目录: %s", *logDir)
-	logger.Info("目标套餐: %s", *planNames)
+	if strings.TrimSpace(*planNames) == "" {
+		logger.Info("目标套餐: 所有 MONTHLY 套餐")
+	} else {
+		logger.Info("目标套餐: %s", *planNames)
+	}
 	if useMax {
 		logger.Info("额度判断模式: 上限模式 - 当额度 > %.1f%% 时跳过18点重置", thresholdMax)
 	} else if thresholdMin > 0 {

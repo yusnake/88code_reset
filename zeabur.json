@@ -7,8 +7,8 @@
       "required": true
     },
     "TARGET_PLANS": {
-      "description": "目标套餐类型，例如：FREE、PRO、PLUS",
-      "default": "FREE",
+      "description": "目标套餐名称（匹配 subscriptionName，可选；留空表示所有 MONTHLY 套餐）",
+      "default": "",
       "required": false
     },
     "TZ": {
