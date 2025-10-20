@@ -1,5 +1,5 @@
 # 编译输出
-reset
+/reset
 bin/
 *.exe
 *.exe~
