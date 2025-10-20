@@ -7,6 +7,7 @@ import (
 
 	"code88reset/internal/api"
 	"code88reset/internal/models"
+	"code88reset/internal/reset"
 	"code88reset/internal/storage"
 	"code88reset/pkg/logger"
 )
@@ -121,27 +122,37 @@ func (s *MultiScheduler) checkAllAccountsStatus() {
 		client := api.NewClient(s.baseURL, acc.APIKey, s.targetPlans)
 		client.Storage = s.storage
 
-		// 获取目标订阅
-		sub, err := client.GetTargetSubscription()
+		runner := reset.NewRunner(
+			client,
+			reset.Filter{TargetPlans: s.targetPlans, RequireMonthly: true},
+			reset.Options{},
+		)
+		subs, err := runner.Eligible()
 		if err != nil {
 			logger.Warn("账号 %s 无法获取目标订阅: %v", acc.EmployeeEmail, err)
 			continue
 		}
 
-		// 更新账号信息
-		s.updateAccountInfo(acc.EmployeeEmail, sub)
+		if len(subs) == 0 {
+			logger.Warn("  账号 %s 未找到符合条件的订阅", acc.EmployeeEmail)
+			continue
+		}
 
-		logger.Info("  订阅状态: 名称=%s, 类型=%s, resetTimes=%d, 积分=%.4f/%.2f",
-			sub.SubscriptionName,
-			sub.SubscriptionPlan.PlanType,
-			sub.ResetTimes,
-			sub.CurrentCredits,
-			sub.SubscriptionPlan.CreditLimit)
+		for i := range subs {
+			sub := &subs[i]
+			s.updateAccountInfo(acc.EmployeeEmail, sub)
+			logger.Info("  订阅[%d]: 名称=%s, 类型=%s, resetTimes=%d, 积分=%.4f/%.2f",
+				i+1,
+				sub.SubscriptionName,
+				sub.SubscriptionPlan.PlanType,
+				sub.ResetTimes,
+				sub.CurrentCredits,
+				sub.SubscriptionPlan.CreditLimit)
 
-		// 警告：resetTimes 不足
-		if sub.ResetTimes < 2 {
-			logger.Warn("  账号 %s 的 resetTimes=%d，不足以执行重置",
-				acc.EmployeeEmail, sub.ResetTimes)
+			if sub.ResetTimes < 2 {
+				logger.Warn("    账号 %s 的 resetTimes=%d，不足以执行重置",
+					acc.EmployeeEmail, sub.ResetTimes)
+			}
 		}
 	}
 
@@ -271,109 +282,76 @@ func (s *MultiScheduler) executeResetForAccount(acc models.AccountConfig, resetT
 	client := api.NewClient(s.baseURL, acc.APIKey, s.targetPlans)
 	client.Storage = s.storage
 
-	// 获取目标订阅
-	sub, err := client.GetTargetSubscription()
+	runner := reset.NewRunner(
+		client,
+		reset.Filter{TargetPlans: s.targetPlans, RequireMonthly: true},
+		reset.Options{
+			ResetType:          resetType,
+			UseMaxThreshold:    s.useMaxThreshold,
+			CreditThresholdMax: s.creditThresholdMax,
+			CreditThresholdMin: s.creditThresholdMin,
+		},
+	)
+
+	results, err := runner.Execute()
 	if err != nil {
-		logger.Error("账号 %s 获取目标订阅失败: %v", employeeEmail, err)
+		logger.Error("账号 %s 执行重置失败: %v", employeeEmail, err)
 		s.updateResetStatus(employeeEmail, status, resetType, false, err.Error())
 		return false
 	}
 
-	// 检查当前额度百分比（仅在第一次重置时检查）
-	if resetType == "first" && sub.SubscriptionPlan.PlanType == "MONTHLY" {
-		creditPercent := 0.0
-		if sub.SubscriptionPlan.CreditLimit > 0 {
-			creditPercent = (sub.CurrentCredits / sub.SubscriptionPlan.CreditLimit) * 100
+	if len(results) == 0 {
+		logger.Warn("账号 %s 未找到符合条件的订阅", employeeEmail)
+		s.updateResetStatus(employeeEmail, status, resetType, true, "无匹配订阅")
+		return true
+	}
+
+	reset.LogResults(results)
+
+	anySuccess := false
+	anyError := false
+	lastMessage := ""
+	firstSuccessRecorded := false
+
+	for _, res := range results {
+		if res.Err != nil {
+			anyError = true
+			lastMessage = fmt.Sprintf("[%s] %v", res.Subscription.SubscriptionName, res.Err)
+			continue
+		}
+		if res.Skipped {
+			lastMessage = fmt.Sprintf("[%s] 跳过: %s", res.Subscription.SubscriptionName, res.SkipReason)
+			continue
 		}
 
-		logger.Info("账号 %s 当前额度: %.4f / %.2f (%.2f%%)",
-			employeeEmail,
-			sub.CurrentCredits,
-			sub.SubscriptionPlan.CreditLimit,
-			creditPercent)
+		anySuccess = true
+		lastMessage = fmt.Sprintf("[%s] %s", res.Subscription.SubscriptionName, res.ResetResponse.Message)
+		if !firstSuccessRecorded {
+			status.ResetTimesBeforeReset = res.BeforeResets
+			status.CreditsBeforeReset = res.BeforeCredits
+			status.ResetTimesAfterReset = res.AfterResets
+			status.CreditsAfterReset = res.AfterCredits
+			firstSuccessRecorded = true
+		}
 
-		// 上限模式：当额度>上限时跳过重置
-		if s.useMaxThreshold && s.creditThresholdMax > 0 {
-			if creditPercent > s.creditThresholdMax {
-				skipMsg := fmt.Sprintf("额度充足(%.2f%% > %.1f%%)", creditPercent, s.creditThresholdMax)
-				logger.Info("账号 %s 上限模式: 当前额度 %.2f%% > %.1f%%，跳过18点重置",
-					employeeEmail, creditPercent, s.creditThresholdMax)
-
-				// 标记为已执行（跳过）
-				now := time.Now()
-				status.FirstResetToday = true
-				status.LastFirstResetTime = &now
-				status.LastResetMessage = fmt.Sprintf("跳过: %s", skipMsg)
-				if err := s.storage.SaveStatusByEmail(employeeEmail, status); err != nil {
-					logger.Error("账号 %s 保存状态失败: %v", employeeEmail, err)
-				}
-
-				return true // 返回 true 表示已处理
-			}
-			logger.Info("账号 %s 上限模式: 当前额度 %.2f%% <= %.1f%%，继续执行重置",
-				employeeEmail, creditPercent, s.creditThresholdMax)
-		} else if !s.useMaxThreshold && s.creditThresholdMin > 0 {
-			// 下限模式：当额度<下限时才执行重置
-			if creditPercent >= s.creditThresholdMin {
-				skipMsg := fmt.Sprintf("额度充足(%.2f%% >= %.1f%%)", creditPercent, s.creditThresholdMin)
-				logger.Info("账号 %s 下限模式: 当前额度 %.2f%% >= %.1f%%，跳过18点重置",
-					employeeEmail, creditPercent, s.creditThresholdMin)
-
-				// 标记为已执行（跳过）
-				now := time.Now()
-				status.FirstResetToday = true
-				status.LastFirstResetTime = &now
-				status.LastResetMessage = fmt.Sprintf("跳过: %s", skipMsg)
-				if err := s.storage.SaveStatusByEmail(employeeEmail, status); err != nil {
-					logger.Error("账号 %s 保存状态失败: %v", employeeEmail, err)
-				}
-
-				return true // 返回 true 表示已处理
-			}
-			logger.Info("账号 %s 下限模式: 当前额度 %.2f%% < %.1f%%，继续执行重置",
-				employeeEmail, creditPercent, s.creditThresholdMin)
+		if res.UpdatedSubscription != nil {
+			s.updateAccountInfo(employeeEmail, res.UpdatedSubscription)
+		} else {
+			s.updateAccountInfo(employeeEmail, &res.Subscription)
 		}
 	}
 
-	// 记录重置前的状态
-	status.ResetTimesBeforeReset = sub.ResetTimes
-	status.CreditsBeforeReset = sub.CurrentCredits
-
-	logger.Info("账号 %s 重置前: resetTimes=%d, credits=%.4f",
-		employeeEmail, sub.ResetTimes, sub.CurrentCredits)
-
-	// 执行重置
-	resetResp, err := client.ResetCredits(sub.ID)
-	if err != nil {
-		logger.Error("账号 %s 重置失败: %v", employeeEmail, err)
-		s.updateResetStatus(employeeEmail, status, resetType, false, err.Error())
-		return false
+	successFlag := false
+	if anySuccess {
+		successFlag = true
+	} else if !anyError {
+		// 全部跳过也视为成功，避免统计为失败
+		successFlag = true
 	}
 
-	logger.Info("账号 %s 重置成功: %s", employeeEmail, resetResp.Message)
+	s.updateResetStatus(employeeEmail, status, resetType, successFlag, lastMessage)
 
-	// 等待几秒后获取新状态
-	time.Sleep(3 * time.Second)
-
-	// 获取重置后的状态
-	subAfter, err := client.GetTargetSubscription()
-	if err != nil {
-		logger.Warn("账号 %s 获取重置后状态失败: %v", employeeEmail, err)
-	} else {
-		status.ResetTimesAfterReset = subAfter.ResetTimes
-		status.CreditsAfterReset = subAfter.CurrentCredits
-
-		logger.Info("账号 %s 重置后: resetTimes=%d, credits=%.4f",
-			employeeEmail, subAfter.ResetTimes, subAfter.CurrentCredits)
-
-		// 更新账号信息
-		s.updateAccountInfo(employeeEmail, subAfter)
-	}
-
-	// 更新状态
-	s.updateResetStatus(employeeEmail, status, resetType, true, resetResp.Message)
-
-	return true
+	return successFlag
 }
 
 // updateResetStatus 更新重置状态
@@ -400,99 +378,4 @@ func (s *MultiScheduler) updateResetStatus(employeeEmail string, status *models.
 	if err := s.storage.SaveStatusByEmail(employeeEmail, status); err != nil {
 		logger.Error("账号 %s 保存状态失败: %v", employeeEmail, err)
 	}
-}
-
-// ManualResetAllAccounts 手动重置所有活跃账号
-func (s *MultiScheduler) ManualResetAllAccounts() error {
-	logger.Info("========================================")
-	logger.Info("手动触发多账号重置")
-	logger.Info("========================================")
-
-	if len(s.activeAccounts) == 0 {
-		return fmt.Errorf("没有活跃的账号")
-	}
-
-	logger.Info("将为 %d 个账号执行重置...", len(s.activeAccounts))
-
-	var wg sync.WaitGroup
-	successCount := 0
-	failCount := 0
-	var mu sync.Mutex
-
-	for i, acc := range s.activeAccounts {
-		wg.Add(1)
-		go func(index int, account models.AccountConfig) {
-			defer wg.Done()
-
-			logger.Info("[%d/%d] 手动重置账号: %s (%s)",
-				index+1, len(s.activeAccounts), account.EmployeeEmail, account.Name)
-
-			success := s.manualResetForAccount(account)
-
-			mu.Lock()
-			if success {
-				successCount++
-			} else {
-				failCount++
-			}
-			mu.Unlock()
-		}(i, acc)
-	}
-
-	wg.Wait()
-
-	logger.Info("========================================")
-	logger.Info("手动重置完成: 成功 %d 个，失败 %d 个", successCount, failCount)
-	logger.Info("========================================")
-
-	if failCount > 0 {
-		return fmt.Errorf("部分账号重置失败: 成功 %d 个，失败 %d 个", successCount, failCount)
-	}
-
-	return nil
-}
-
-// manualResetForAccount 手动重置单个账号
-func (s *MultiScheduler) manualResetForAccount(acc models.AccountConfig) bool {
-	employeeEmail := acc.EmployeeEmail
-
-	// 创建客户端
-	client := api.NewClient(s.baseURL, acc.APIKey, s.targetPlans)
-	client.Storage = s.storage
-
-	// 获取目标订阅
-	sub, err := client.GetTargetSubscription()
-	if err != nil {
-		logger.Error("账号 %s 获取目标订阅失败: %v", employeeEmail, err)
-		return false
-	}
-
-	logger.Info("账号 %s 重置前: resetTimes=%d, credits=%.4f",
-		employeeEmail, sub.ResetTimes, sub.CurrentCredits)
-
-	// 执行重置
-	resetResp, err := client.ResetCredits(sub.ID)
-	if err != nil {
-		logger.Error("账号 %s 重置失败: %v", employeeEmail, err)
-		return false
-	}
-
-	logger.Info("账号 %s 重置成功: %s", employeeEmail, resetResp.Message)
-
-	// 等待几秒后获取新状态
-	time.Sleep(3 * time.Second)
-
-	// 获取重置后的状态
-	subAfter, err := client.GetTargetSubscription()
-	if err != nil {
-		logger.Warn("账号 %s 获取重置后状态失败: %v", employeeEmail, err)
-	} else {
-		logger.Info("账号 %s 重置后: resetTimes=%d, credits=%.4f",
-			employeeEmail, subAfter.ResetTimes, subAfter.CurrentCredits)
-
-		// 更新账号信息
-		s.updateAccountInfo(employeeEmail, subAfter)
-	}
-
-	return true
 }

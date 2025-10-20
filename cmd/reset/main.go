@@ -14,13 +14,12 @@ import (
 )
 
 var (
-	mode               = flag.String("mode", "test", "运行模式: test(测试), run(自动调度器), manual(手动重置), list(列出历史账号)")
+	mode               = flag.String("mode", "test", "运行模式: test(测试), run(自动调度器), list(列出历史账号)")
 	apiKey             = flag.String("apikey", "", "API Key，支持单个或多个（逗号分隔），优先使用环境变量或.env文件")
 	apiKeys            = flag.String("apikeys", "", "多个 API Keys（逗号分隔），与 -apikey 等效")
 	baseURL            = flag.String("baseurl", appconfig.DefaultBaseURL, "API Base URL")
 	dataDir            = flag.String("datadir", appconfig.DefaultDataDir, "数据目录")
 	logDir             = flag.String("logdir", appconfig.DefaultLogDir, "日志目录")
-	skipConfirm        = flag.Bool("yes", false, "跳过确认提示（仅用于手动重置）")
 	planNames          = flag.String("plans", "", "要重置的订阅计划名称（匹配 subscriptionName），多个用逗号分隔；留空表示所有 MONTHLY 套餐")
 	timezone           = flag.String("timezone", "", "时区设置 (例如: Asia/Shanghai, Asia/Hong_Kong, UTC)")
 	creditThresholdMax = flag.Float64("threshold-max", 0, "额度上限百分比(0-100)，当额度>上限时跳过18点重置，0表示使用环境变量或默认值83")
@@ -81,7 +80,6 @@ func main() {
 		BaseURL:            *baseURL,
 		DataDir:            *dataDir,
 		LogDir:             *logDir,
-		SkipConfirm:        *skipConfirm,
 		Plans:              plans,
 		Timezone:           tz,
 		CreditThresholdMax: thresholdMax,

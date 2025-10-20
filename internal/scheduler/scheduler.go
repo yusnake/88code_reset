@@ -6,6 +6,7 @@ import (
 
 	"code88reset/internal/api"
 	"code88reset/internal/models"
+	"code88reset/internal/reset"
 	"code88reset/internal/storage"
 	"code88reset/pkg/logger"
 )
@@ -113,36 +114,38 @@ func (s *Scheduler) Stop() {
 func (s *Scheduler) checkSubscriptionStatus() {
 	logger.Debug("检查目标订阅状态...")
 
-	sub, err := s.apiClient.GetTargetSubscription()
+	runner := reset.NewRunner(
+		s.apiClient,
+		reset.Filter{TargetPlans: s.apiClient.TargetPlans, RequireMonthly: true},
+		reset.Options{},
+	)
+
+	subs, err := runner.Eligible()
 	if err != nil {
 		logger.Warn("无法获取目标订阅: %v", err)
 		return
 	}
 
-	// 更新账号信息
-	s.updateAccountInfo(sub)
-
-	logger.Info("订阅状态: 名称=%s, 类型=%s, resetTimes=%d, 积分=%.4f/%.2f",
-		sub.SubscriptionName,
-		sub.SubscriptionPlan.PlanType,
-		sub.ResetTimes,
-		sub.CurrentCredits,
-		sub.SubscriptionPlan.CreditLimit)
-
-	// 警告：如果 resetTimes 不足
-	if sub.ResetTimes < 2 {
-		logger.Warn("当前 resetTimes=%d，不足以执行重置（需要 >= 2）", sub.ResetTimes)
+	if len(subs) == 0 {
+		logger.Warn("未找到符合条件的订阅")
+		return
 	}
 
-	// 警告：如果检测到 PAYGO 类型（理论上不应该出现，因为在 GetTargetSubscription 中已过滤）
-	isPAYGO := sub.SubscriptionName == "PAYGO" ||
-		sub.SubscriptionPlan.SubscriptionName == "PAYGO" ||
-		sub.SubscriptionPlan.PlanType == "PAYGO" ||
-		sub.SubscriptionPlan.PlanType == "PAY_PER_USE"
+	logger.Info("订阅状态（共 %d 个）:", len(subs))
+	for i := range subs {
+		sub := &subs[i]
+		s.updateAccountInfo(sub)
+		logger.Info("  [%d] 名称=%s, 类型=%s, resetTimes=%d, 积分=%.4f/%.2f",
+			i+1,
+			sub.SubscriptionName,
+			sub.SubscriptionPlan.PlanType,
+			sub.ResetTimes,
+			sub.CurrentCredits,
+			sub.SubscriptionPlan.CreditLimit)
 
-	if isPAYGO {
-		logger.Error("🚨 警告：检测到 PAYGO 类型订阅 (名称=%s, 类型=%s)，这不应该发生！",
-			sub.SubscriptionName, sub.SubscriptionPlan.PlanType)
+		if sub.ResetTimes < 2 {
+			logger.Warn("    resetTimes=%d，不足以执行重置（需要 >= 2）", sub.ResetTimes)
+		}
 	}
 }
 
@@ -215,110 +218,86 @@ func (s *Scheduler) executeReset(resetType string) {
 		}
 	}
 
-	// 获取目标订阅信息
 	logger.Info("正在获取目标订阅信息...")
-	freeSub, err := s.apiClient.GetTargetSubscription()
+	runner := reset.NewRunner(
+		s.apiClient,
+		reset.Filter{TargetPlans: s.apiClient.TargetPlans, RequireMonthly: true},
+		reset.Options{
+			ResetType:          resetType,
+			UseMaxThreshold:    s.useMaxThreshold,
+			CreditThresholdMax: s.creditThresholdMax,
+			CreditThresholdMin: s.creditThresholdMin,
+		},
+	)
+
+	results, err := runner.Execute()
 	if err != nil {
-		logger.Error("获取目标订阅失败: %v", err)
-		s.updateStatusAfterFailure(status, err.Error())
+		logger.Error("执行重置失败: %v", err)
+		s.recordFailure(status, err.Error(), resetType)
 		return
 	}
 
-	// 更新账号信息
-	s.updateAccountInfo(freeSub)
+	if len(results) == 0 {
+		logger.Warn("未找到需要处理的订阅")
+		s.recordSkip(status, resetType, "无匹配订阅")
+		return
+	}
 
-	// 检查当前额度百分比（仅在第一次重置时检查）
-	if resetType == "first" && freeSub.SubscriptionPlan.PlanType == "MONTHLY" {
-		creditPercent := 0.0
-		if freeSub.SubscriptionPlan.CreditLimit > 0 {
-			creditPercent = (freeSub.CurrentCredits / freeSub.SubscriptionPlan.CreditLimit) * 100
+	reset.LogResults(results)
+
+	anySuccess := false
+	anyError := false
+	lastMessage := ""
+
+	for _, res := range results {
+		if res.Err != nil {
+			anyError = true
+			lastMessage = fmt.Sprintf("[%s] %v", res.Subscription.SubscriptionName, res.Err)
+			continue
+		}
+		if res.Skipped {
+			lastMessage = fmt.Sprintf("[%s] 跳过: %s", res.Subscription.SubscriptionName, res.SkipReason)
+			continue
 		}
 
-		logger.Info("当前额度: %.4f / %.2f (%.2f%%)",
-			freeSub.CurrentCredits,
-			freeSub.SubscriptionPlan.CreditLimit,
-			creditPercent)
+		anySuccess = true
+		lastMessage = fmt.Sprintf("[%s] %s", res.Subscription.SubscriptionName, res.ResetResponse.Message)
+		status.ResetTimesBeforeReset = res.BeforeResets
+		status.CreditsBeforeReset = res.BeforeCredits
+		status.ResetTimesAfterReset = res.AfterResets
+		status.CreditsAfterReset = res.AfterCredits
 
-		// 上限模式：当额度>上限时跳过重置
-		if s.useMaxThreshold && s.creditThresholdMax > 0 {
-			if creditPercent > s.creditThresholdMax {
-				logger.Info("上限模式: 当前额度 %.2f%% > %.1f%%，跳过18点重置",
-					creditPercent, s.creditThresholdMax)
-				s.updateStatusAfterSkip(status, resetType, freeSub,
-					fmt.Sprintf("额度充足(%.2f%% > %.1f%%)", creditPercent, s.creditThresholdMax))
-				return
-			}
-			logger.Info("上限模式: 当前额度 %.2f%% <= %.1f%%，继续执行重置",
-				creditPercent, s.creditThresholdMax)
-		} else if !s.useMaxThreshold && s.creditThresholdMin > 0 {
-			// 下限模式：当额度<下限时才执行重置
-			if creditPercent >= s.creditThresholdMin {
-				logger.Info("下限模式: 当前额度 %.2f%% >= %.1f%%，跳过18点重置",
-					creditPercent, s.creditThresholdMin)
-				s.updateStatusAfterSkip(status, resetType, freeSub,
-					fmt.Sprintf("额度充足(%.2f%% >= %.1f%%)", creditPercent, s.creditThresholdMin))
-				return
-			}
-			logger.Info("下限模式: 当前额度 %.2f%% < %.1f%%，继续执行重置",
-				creditPercent, s.creditThresholdMin)
+		if res.UpdatedSubscription != nil {
+			s.updateAccountInfo(res.UpdatedSubscription)
+		} else {
+			s.updateAccountInfo(&res.Subscription)
 		}
 	}
 
-	// 检查 resetTimes
-	logger.Info("当前 resetTimes: %d", freeSub.ResetTimes)
-
-	// 第一次重置（18:50）需要至少2次机会，保证留一次给23:55
-	// 第二次重置（23:55）只需要至少1次机会
-	minRequired := 2
-	if resetType == "second" {
-		minRequired = 1
+	now := time.Now()
+	if resetType == "first" {
+		status.FirstResetToday = true
+		status.LastFirstResetTime = &now
+	} else {
+		status.SecondResetToday = true
+		status.LastSecondResetTime = &now
 	}
 
-	if freeSub.ResetTimes < minRequired {
-		logger.Warn("resetTimes=%d < %d，重置次数不足，跳过重置", freeSub.ResetTimes, minRequired)
-		s.updateStatusAfterSkip(status, resetType, freeSub, fmt.Sprintf("resetTimes不足(需要>=%d)", minRequired))
-		return
+	status.LastResetMessage = lastMessage
+
+	if anySuccess {
+		status.LastResetSuccess = true
+		status.ConsecutiveFailures = 0
+	} else if anyError {
+		status.LastResetSuccess = false
+		status.ConsecutiveFailures++
+	} else {
+		status.LastResetSuccess = true
 	}
 
-	// 记录重置前的状态
-	status.ResetTimesBeforeReset = freeSub.ResetTimes
-	status.CreditsBeforeReset = freeSub.CurrentCredits
-
-	// 执行重置
-	logger.Info("执行重置: subscriptionID=%d, 当前积分=%.4f, resetTimes=%d",
-		freeSub.ID, freeSub.CurrentCredits, freeSub.ResetTimes)
-
-	resetResp, err := s.apiClient.ResetCredits(freeSub.ID)
-	if err != nil {
-		logger.Error("重置失败: %v", err)
-		s.updateStatusAfterFailure(status, err.Error())
-		return
+	if err := s.storage.SaveStatus(status); err != nil {
+		logger.Error("保存状态失败: %v", err)
 	}
-
-	// 重置成功，等待几秒后再次获取订阅信息验证
-	logger.Info("重置响应: %s", resetResp.Message)
-	time.Sleep(3 * time.Second)
-
-	// 验证重置结果
-	logger.Info("验证重置结果...")
-	freeSubAfter, err := s.apiClient.GetTargetSubscription()
-	if err != nil {
-		logger.Warn("验证重置结果时获取订阅信息失败: %v", err)
-		// 即使验证失败，也认为重置成功（因为API返回成功）
-		s.updateStatusAfterSuccess(status, resetType, freeSub, resetResp)
-		return
-	}
-
-	// 记录重置后的状态
-	status.ResetTimesAfterReset = freeSubAfter.ResetTimes
-	status.CreditsAfterReset = freeSubAfter.CurrentCredits
-
-	logger.Info("重置后状态: resetTimes=%d, 积分=%.4f",
-		freeSubAfter.ResetTimes, freeSubAfter.CurrentCredits)
-
-	// 更新账号信息和状态
-	s.updateAccountInfo(freeSubAfter)
-	s.updateStatusAfterSuccess(status, resetType, freeSubAfter, resetResp)
 
 	logger.Info("========================================")
 	logger.Info("%s重置任务完成", map[string]string{"first": "第一次", "second": "第二次"}[resetType])
@@ -330,10 +309,8 @@ func (s *Scheduler) updateAccountInfo(sub *models.Subscription) {
 	s.accountUpdater.UpdateGlobal(sub)
 }
 
-// updateStatusAfterSuccess 重置成功后更新状态
-func (s *Scheduler) updateStatusAfterSuccess(status *models.ExecutionStatus, resetType string, _ *models.Subscription, resp *models.ResetResponse) {
+func (s *Scheduler) recordFailure(status *models.ExecutionStatus, message, resetType string) {
 	now := time.Now()
-
 	if resetType == "first" {
 		status.FirstResetToday = true
 		status.LastFirstResetTime = &now
@@ -341,32 +318,16 @@ func (s *Scheduler) updateStatusAfterSuccess(status *models.ExecutionStatus, res
 		status.SecondResetToday = true
 		status.LastSecondResetTime = &now
 	}
-
-	status.LastResetSuccess = true
-	status.LastResetMessage = resp.Message
-	status.ConsecutiveFailures = 0
-
-	if err := s.storage.SaveStatus(status); err != nil {
-		logger.Error("保存状态失败: %v", err)
-	}
-}
-
-// updateStatusAfterFailure 重置失败后更新状态
-func (s *Scheduler) updateStatusAfterFailure(status *models.ExecutionStatus, errorMsg string) {
 	status.LastResetSuccess = false
-	status.LastResetMessage = errorMsg
+	status.LastResetMessage = message
 	status.ConsecutiveFailures++
-
 	if err := s.storage.SaveStatus(status); err != nil {
 		logger.Error("保存状态失败: %v", err)
 	}
 }
 
-// updateStatusAfterSkip 跳过重置后更新状态
-func (s *Scheduler) updateStatusAfterSkip(status *models.ExecutionStatus, resetType string, _ *models.Subscription, reason string) {
-	// 标记为已执行（即使跳过），避免重复检查
+func (s *Scheduler) recordSkip(status *models.ExecutionStatus, resetType string, reason string) {
 	now := time.Now()
-
 	if resetType == "first" {
 		status.FirstResetToday = true
 		status.LastFirstResetTime = &now
@@ -374,46 +335,9 @@ func (s *Scheduler) updateStatusAfterSkip(status *models.ExecutionStatus, resetT
 		status.SecondResetToday = true
 		status.LastSecondResetTime = &now
 	}
-
+	status.LastResetSuccess = true
 	status.LastResetMessage = fmt.Sprintf("跳过: %s", reason)
-
 	if err := s.storage.SaveStatus(status); err != nil {
 		logger.Error("保存状态失败: %v", err)
 	}
-}
-
-// ManualReset 手动触发重置（用于测试）
-func (s *Scheduler) ManualReset() error {
-	logger.Info("========================================")
-	logger.Info("手动触发重置任务")
-	logger.Info("========================================")
-
-	// 尝试获取锁
-	if err := s.storage.AcquireLock("manual_reset"); err != nil {
-		return fmt.Errorf("无法获取锁: %w", err)
-	}
-	defer s.storage.ReleaseLock()
-
-	// 获取目标订阅信息
-	freeSub, err := s.apiClient.GetTargetSubscription()
-	if err != nil {
-		return fmt.Errorf("获取目标订阅失败: %w", err)
-	}
-
-	logger.Info("目标订阅信息:")
-	logger.Info("  名称: %s", freeSub.SubscriptionName)
-	logger.Info("  ID: %d", freeSub.ID)
-	logger.Info("  类型: %s", freeSub.SubscriptionPlan.PlanType)
-	logger.Info("  当前积分: %.4f / %.2f", freeSub.CurrentCredits, freeSub.SubscriptionPlan.CreditLimit)
-	logger.Info("  resetTimes: %d", freeSub.ResetTimes)
-
-	if freeSub.ResetTimes < 2 {
-		return fmt.Errorf("resetTimes=%d，不满足重置条件（需要 >= 2）", freeSub.ResetTimes)
-	}
-
-	logger.Info("\n⚠️  准备执行重置操作...")
-	logger.Info("⚠️  这将消耗一次重置机会")
-	logger.Info("⚠️  请在主程序中确认后再调用实际的重置接口\n")
-
-	return nil
 }

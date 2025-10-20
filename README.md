@@ -41,6 +41,7 @@
 
 ## 核心行为
 - 默认匹配所有 `planType=MONTHLY` 的订阅；通过 `TARGET_PLANS` 或 `-plans` 限定 `subscriptionName`。
+- 每次触发会对所有符合条件的订阅逐个调用重置，无需指定单独 ID。
 - 当 `resetTimes >= 2` 时，计划会在本地时间 18:50 与 23:55 自动重置，并记录数据到 `data/`。
 - PAYGO 套餐始终被忽略，避免误重置。
 
@@ -52,7 +53,7 @@
 | `TARGET_PLANS` | `""`   | 限定要处理的套餐名称（匹配 `subscriptionName`）。留空=全部 MONTHLY。|
 | `TZ` / `-timezone` | `Asia/Shanghai` | 用于换算调度时间。|
 | `-plans`       | `""`   | 与 `TARGET_PLANS` 等效。|
-| `-mode`        | `test` | `test`、`run`、`manual`、`list`。|
+| `-mode`        | `test` | `test`、`run`、`list`。|
 | `-threshold-max` | `83` | 大于该比率时跳过 18:50 重置。|
 | `-threshold-min` | `0`  | 仅在余额低于该比率时执行 18:50 重置。|
 | `-first-reset` | `false` | `true` 时启用 18:50 首次重置。|
@@ -62,9 +63,6 @@
 ```bash
 # 列出历史账号
 go run cmd/reset/main.go -mode=list
-
-# 手动重置（需确认）
-go run cmd/reset/main.go -mode=manual -plans=FREE
 
 # Docker 持续运行（挂载数据日志目录）
 docker run -d --name 88code-reset \

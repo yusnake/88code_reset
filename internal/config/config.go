@@ -26,7 +26,6 @@ type Settings struct {
 	BaseURL            string
 	DataDir            string
 	LogDir             string
-	SkipConfirm        bool
 	Plans              []string
 	Timezone           string
 	CreditThresholdMax float64

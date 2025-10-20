@@ -1,15 +1,13 @@
 package app
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
 	"code88reset/internal/api"
 	appconfig "code88reset/internal/config"
 	"code88reset/internal/models"
+	"code88reset/internal/reset"
 	"code88reset/internal/scheduler"
 	"code88reset/internal/storage"
 	"code88reset/pkg/logger"
@@ -33,7 +31,6 @@ type dependencies struct {
 	newClient          func(store *storage.Storage, baseURL, apiKey string, plans []string) apiClient
 	runSingleScheduler func(app *App, client apiClient) error
 	runMultiScheduler  func(app *App, accounts []models.AccountConfig) error
-	manualReset        func(app *App, client apiClient) error
 	sleep              func(d time.Duration)
 }
 
@@ -102,25 +99,6 @@ func defaultDependencies() dependencies {
 			multiSched.Start()
 			return nil
 		},
-		manualReset: func(app *App, client apiClient) error {
-			realClient, ok := client.(*api.Client)
-			if !ok {
-				return fmt.Errorf("unsupported api client type %T", client)
-			}
-			sched, err := scheduler.NewSchedulerWithConfig(
-				realClient,
-				app.Store,
-				app.Config.Timezone,
-				app.Config.CreditThresholdMax,
-				app.Config.CreditThresholdMin,
-				app.Config.UseMaxThreshold,
-				app.Config.EnableFirstReset,
-			)
-			if err != nil {
-				return err
-			}
-			return sched.ManualReset()
-		},
 		sleep: time.Sleep,
 	}
 }
@@ -157,20 +135,9 @@ func (a *App) Run() error {
 
 		logger.Info("多账号模式 - 检测到 %d 个 API Key", len(keys))
 		return a.runMultiAccountMode(keys)
-	case "manual":
-		if len(keys) == 0 {
-			logger.Error("手动重置模式需要至少一个 API Key")
-			return fmt.Errorf("missing api key for manual mode")
-		}
-		if len(keys) > 1 {
-			logger.Warn("检测到 %d 个 API Key，手动模式只会重置第一个账号", len(keys))
-		}
-		logger.Info("手动重置账号 - API Key: %s", appconfig.MaskAPIKey(keys[0]))
-		client := a.newAPIClient(keys[0])
-		return a.runManualMode(client)
 	default:
 		logger.Error("未知的运行模式: %s", a.Config.Mode)
-		logger.Error("支持的模式: test, run, manual, list")
+		logger.Error("支持的模式: test, run, list")
 		return fmt.Errorf("unknown mode %s", a.Config.Mode)
 	}
 }
@@ -209,29 +176,33 @@ func (a *App) runTestMode(client apiClient) error {
 
 	// 测试 3: 获取目标订阅
 	logger.Info("【测试 3/3】查找目标订阅...")
-	targetSub, err := client.GetTargetSubscription()
-	if err != nil {
-		logger.Error("获取目标订阅失败: %v", err)
+	targetSubs := reset.FilterSubscriptions(subscriptions, reset.Filter{TargetPlans: a.Config.Plans, RequireMonthly: true})
+	if len(a.Config.Plans) > 0 && len(targetSubs) == 0 {
 		logger.Error("提示: 请检查 -plans 参数是否设置正确")
-		return err
 	}
 
-	logger.Info("✅ 找到目标订阅\n")
-	logger.Info("目标订阅详细信息:")
-	logger.Info("  名称: %s", targetSub.SubscriptionName)
-	logger.Info("  ID: %d", targetSub.ID)
-	logger.Info("  用户: %s (%s)", targetSub.EmployeeName, targetSub.EmployeeEmail)
-	logger.Info("  当前积分: %.4f / %.2f", targetSub.CurrentCredits, targetSub.SubscriptionPlan.CreditLimit)
-	logger.Info("  resetTimes: %d", targetSub.ResetTimes)
-	logger.Info("  计划类型: %s", targetSub.SubscriptionPlan.PlanType)
-	logger.Info("  开始日期: %s", targetSub.StartDate)
-	logger.Info("  结束日期: %s", targetSub.EndDate)
-	logger.Info("  剩余天数: %d", targetSub.RemainingDays)
-
-	if targetSub.LastCreditReset != nil {
-		logger.Info("  上次重置: %s", *targetSub.LastCreditReset)
+	if len(targetSubs) == 0 {
+		logger.Warn("未找到符合条件的订阅")
 	} else {
-		logger.Info("  上次重置: 从未重置")
+		logger.Info("✅ 找到 %d 个目标订阅\n", len(targetSubs))
+		for i, targetSub := range targetSubs {
+			logger.Info("目标订阅 %d:", i+1)
+			logger.Info("  名称: %s", targetSub.SubscriptionName)
+			logger.Info("  ID: %d", targetSub.ID)
+			logger.Info("  用户: %s (%s)", targetSub.EmployeeName, targetSub.EmployeeEmail)
+			logger.Info("  当前积分: %.4f / %.2f", targetSub.CurrentCredits, targetSub.SubscriptionPlan.CreditLimit)
+			logger.Info("  resetTimes: %d", targetSub.ResetTimes)
+			logger.Info("  计划类型: %s", targetSub.SubscriptionPlan.PlanType)
+			logger.Info("  开始日期: %s", targetSub.StartDate)
+			logger.Info("  结束日期: %s", targetSub.EndDate)
+			logger.Info("  剩余天数: %d", targetSub.RemainingDays)
+			if targetSub.LastCreditReset != nil {
+				logger.Info("  上次重置: %s", *targetSub.LastCreditReset)
+			} else {
+				logger.Info("  上次重置: 从未重置")
+			}
+			logger.Info("")
+		}
 	}
 
 	logger.Info("\n保存账号信息到 %s/account.json...", a.Config.DataDir)
@@ -239,12 +210,18 @@ func (a *App) runTestMode(client apiClient) error {
 	logger.Info("测试完成！")
 	logger.Info("========================================")
 
-	if targetSub.ResetTimes >= 2 {
-		logger.Info("\n✅ 当前 resetTimes=%d，满足重置条件", targetSub.ResetTimes)
-		logger.Info("可以使用以下命令进行手动测试:")
-		logger.Info("  go run cmd/reset/main.go -mode=manual")
+	hasEligible := false
+	for _, sub := range targetSubs {
+		if sub.ResetTimes >= 2 {
+			hasEligible = true
+			break
+		}
+	}
+
+	if hasEligible {
+		logger.Info("\n✅ 至少有一个订阅 resetTimes>=2，满足重置条件")
 	} else {
-		logger.Warn("\n⚠️  当前 resetTimes=%d，不满足重置条件（需要 >= 2）", targetSub.ResetTimes)
+		logger.Warn("\n⚠️  当前所有订阅 resetTimes<2，不满足重置条件（需要 >= 2）")
 		logger.Warn("请等待次日或条件满足后再尝试重置")
 	}
 
@@ -263,85 +240,6 @@ func (a *App) runSchedulerMode(client apiClient) error {
 		logger.Error("创建调度器失败: %v", err)
 		return err
 	}
-
-	return nil
-}
-
-func (a *App) runManualMode(client apiClient) error {
-	logger.Info("\n========================================")
-	logger.Info("手动重置模式")
-	logger.Info("========================================\n")
-
-	targetSub, err := client.GetTargetSubscription()
-	if err != nil {
-		logger.Error("获取目标订阅失败: %v", err)
-		return err
-	}
-
-	logger.Info("当前目标订阅状态:")
-	logger.Info("  名称: %s", targetSub.SubscriptionName)
-	logger.Info("  ID: %d", targetSub.ID)
-	logger.Info("  类型: %s", targetSub.SubscriptionPlan.PlanType)
-	logger.Info("  当前积分: %.4f / %.2f", targetSub.CurrentCredits, targetSub.SubscriptionPlan.CreditLimit)
-	logger.Info("  resetTimes: %d", targetSub.ResetTimes)
-
-	if targetSub.ResetTimes < 2 {
-		logger.Error("\n❌ resetTimes=%d，不满足重置条件（需要 >= 2）", targetSub.ResetTimes)
-		logger.Error("无法执行重置操作")
-		return fmt.Errorf("reset times below threshold")
-	}
-
-	logger.Warn("\n⚠️  警告：此操作将执行真实的重置！")
-	logger.Warn("⚠️  这将消耗一次重置机会（resetTimes 将减少）")
-	logger.Warn("")
-
-	if !a.Config.SkipConfirm {
-		logger.Info("请输入 'yes' 确认执行重置，或输入其他内容取消:")
-		reader := bufio.NewReader(os.Stdin)
-		input, _ := reader.ReadString('\n')
-		input = strings.TrimSpace(strings.ToLower(input))
-
-		if input != "yes" {
-			logger.Info("取消操作")
-			return nil
-		}
-	}
-
-	logger.Info("\n开始执行重置...")
-
-	if err := a.deps.manualReset(a, client); err != nil {
-		logger.Error("手动重置失败: %v", err)
-		return err
-	}
-
-	logger.Info("正在调用重置接口...")
-	resetResp, err := client.ResetCredits(targetSub.ID)
-	if err != nil {
-		logger.Error("重置失败: %v", err)
-		return err
-	}
-
-	logger.Info("\n✅ 重置成功!")
-	logger.Info("响应: %s", resetResp.Message)
-
-	logger.Info("\n验证重置结果...")
-	a.deps.sleep(3 * time.Second)
-	targetSubAfter, err := client.GetTargetSubscription()
-	if err != nil {
-		logger.Warn("获取验证信息失败: %v", err)
-	} else {
-		logger.Info("\n重置后状态:")
-		logger.Info("  当前积分: %.4f (之前: %.4f)", targetSubAfter.CurrentCredits, targetSub.CurrentCredits)
-		logger.Info("  resetTimes: %d (之前: %d)", targetSubAfter.ResetTimes, targetSub.ResetTimes)
-
-		if targetSubAfter.CurrentCredits > targetSub.CurrentCredits {
-			logger.Info("\n✅ 积分已成功恢复!")
-		}
-	}
-
-	logger.Info("\n========================================")
-	logger.Info("手动重置完成")
-	logger.Info("========================================")
 
 	return nil
 }

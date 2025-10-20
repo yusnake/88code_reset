@@ -144,16 +144,12 @@ func TestAppRun_TestMode(t *testing.T) {
 		t.Fatalf("multi scheduler should not be invoked in test mode")
 		return nil
 	}
-	app.deps.manualReset = func(*App, apiClient) error {
-		t.Fatalf("manual reset should not be invoked in test mode")
-		return nil
-	}
 
 	if err := app.Run(); err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	if !client.testConnectionCalled || !client.getSubscriptionsCalled || client.getTargetSubscriptionCnt == 0 {
+	if !client.testConnectionCalled || !client.getSubscriptionsCalled {
 		t.Fatalf("client methods not called as expected: %+v", client)
 	}
 	if mgr.listCalled || mgr.syncCalled || mgr.activeCalled {
@@ -183,10 +179,6 @@ func TestAppRun_RunModeSingle(t *testing.T) {
 	}
 	app.deps.runMultiScheduler = func(*App, []models.AccountConfig) error {
 		t.Fatalf("multi scheduler should not be invoked for single run mode")
-		return nil
-	}
-	app.deps.manualReset = func(*App, apiClient) error {
-		t.Fatalf("manual reset not expected")
 		return nil
 	}
 
@@ -230,10 +222,6 @@ func TestAppRun_RunModeMulti(t *testing.T) {
 		received = append([]models.AccountConfig(nil), accounts...)
 		return nil
 	}
-	app.deps.manualReset = func(*App, apiClient) error {
-		t.Fatalf("manual reset not expected")
-		return nil
-	}
 
 	if err := app.Run(); err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -244,56 +232,5 @@ func TestAppRun_RunModeMulti(t *testing.T) {
 	}
 	if len(received) != len(mgr.activeAccountsResp) {
 		t.Fatalf("expected %d accounts, got %d", len(mgr.activeAccountsResp), len(received))
-	}
-}
-
-func TestAppRun_ManualMode(t *testing.T) {
-	cfg := appconfig.Settings{
-		Mode:        "manual",
-		APIKeys:     []string{"manual"},
-		Plans:       []string{"FREE"},
-		SkipConfirm: true,
-	}
-
-	mgr := &fakeAccountManager{}
-	app := newTestApp(t, cfg, mgr)
-
-	client := &fakeClient{
-		target: &models.Subscription{
-			ID:               42,
-			SubscriptionName: "FREE",
-			SubscriptionPlan: models.SubscriptionPlan{PlanType: "MONTHLY", CreditLimit: 20},
-			CurrentCredits:   5,
-			ResetTimes:       3,
-		},
-	}
-	app.deps.newClient = func(*storage.Storage, string, string, []string) apiClient { return client }
-
-	manualCalled := false
-	app.deps.manualReset = func(*App, apiClient) error {
-		manualCalled = true
-		return nil
-	}
-	app.deps.runSingleScheduler = func(*App, apiClient) error {
-		t.Fatalf("scheduler run should not be invoked in manual mode")
-		return nil
-	}
-	app.deps.runMultiScheduler = func(*App, []models.AccountConfig) error {
-		t.Fatalf("multi scheduler should not run in manual mode")
-		return nil
-	}
-
-	if err := app.Run(); err != nil {
-		t.Fatalf("Run returned error: %v", err)
-	}
-
-	if !manualCalled {
-		t.Fatalf("expected manual reset to be invoked")
-	}
-	if !client.resetCreditsCalled || client.lastResetID != 42 {
-		t.Fatalf("expected reset credits call, got %+v", client)
-	}
-	if client.getTargetSubscriptionCnt < 2 {
-		t.Fatalf("expected target subscription to be fetched twice, got %d", client.getTargetSubscriptionCnt)
 	}
 }
