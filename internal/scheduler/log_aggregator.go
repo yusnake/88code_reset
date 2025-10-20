@@ -44,8 +44,41 @@ func (l *logAggregator) Flush() {
 		return
 	}
 
-	message := strings.Join(l.buffer, "; ")
-	logger.Info("[%s] 最近%d分钟检查: %s", l.label, int(l.interval.Minutes()), message)
+	var (
+		firstCheck string
+		lastCheck  string
+		otherMsgs  []string
+	)
+
+	for _, entry := range l.buffer {
+		if strings.HasPrefix(entry, "检查时间:") {
+			ts := strings.TrimSpace(strings.TrimPrefix(entry, "检查时间:"))
+			if ts != "" {
+				if firstCheck == "" {
+					firstCheck = ts
+				}
+				lastCheck = ts
+				continue
+			}
+		}
+		otherMsgs = append(otherMsgs, entry)
+	}
+
+	minutes := int(l.interval.Minutes())
+	if minutes == 0 {
+		minutes = 1
+	}
+
+	switch {
+	case firstCheck != "" && lastCheck != "" && firstCheck != lastCheck:
+		logger.Info("[%s] 最近%d分钟检查: 已覆盖 %s 至 %s", l.label, minutes, firstCheck, lastCheck)
+	case firstCheck != "":
+		logger.Info("[%s] 最近%d分钟检查: 已于 %s 完成", l.label, minutes, firstCheck)
+	}
+
+	if len(otherMsgs) > 0 {
+		logger.Info("[%s] 其他信息: %s", l.label, strings.Join(otherMsgs, "; "))
+	}
 
 	l.buffer = nil
 	l.lastFlush = time.Now()

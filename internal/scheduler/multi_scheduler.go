@@ -141,7 +141,7 @@ func (s *MultiScheduler) checkAllAccountsStatus() {
 		for i := range subs {
 			sub := &subs[i]
 			s.updateAccountInfo(acc.EmployeeEmail, sub)
-			logger.Info("  订阅[%d]: 名称=%s, 类型=%s, resetTimes=%d, 积分=%.4f/%.2f",
+			logger.Info("  订阅[%d]: 名称=%s, 类型=%s, resetTimes=%d, 积分=%.3f/%.3f",
 				i+1,
 				sub.SubscriptionName,
 				sub.SubscriptionPlan.PlanType,

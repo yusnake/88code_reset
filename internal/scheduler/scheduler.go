@@ -25,8 +25,8 @@ const (
 	// 最小间隔时间（5小时）
 	MinResetInterval = 5 * time.Hour
 
-	// 订阅状态检查间隔（每小时检查一次）
-	SubscriptionCheckInterval = 1 * time.Hour
+	// 订阅状态检查间隔（每 5 分钟检查一次）
+	SubscriptionCheckInterval = 5 * time.Minute
 )
 
 // Scheduler 调度器
@@ -135,7 +135,7 @@ func (s *Scheduler) checkSubscriptionStatus() {
 	for i := range subs {
 		sub := &subs[i]
 		s.updateAccountInfo(sub)
-		logger.Info("  [%d] 名称=%s, 类型=%s, resetTimes=%d, 积分=%.4f/%.2f",
+		logger.Info("  [%d] 名称=%s, 类型=%s, resetTimes=%d, 积分=%.3f/%.3f",
 			i+1,
 			sub.SubscriptionName,
 			sub.SubscriptionPlan.PlanType,
