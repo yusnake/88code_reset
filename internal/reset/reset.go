@@ -59,15 +59,18 @@ func NewRunner(client *api.Client, filter Filter, opts Options) *Runner {
 
 // Execute fetches subscriptions, filters them, and resets each eligible one.
 func (r *Runner) Execute() ([]Result, error) {
-	targets, err := r.Eligible()
+	subs, err := r.client.GetSubscriptions()
 	if err != nil {
 		return nil, err
 	}
 
+	targets := FilterSubscriptions(subs, r.filter)
 	results := make([]Result, 0, len(targets))
 
+	fetcher := newSubscriptionFetcher(r.client, subs)
+
 	for _, sub := range targets {
-		results = append(results, r.processSubscription(sub))
+		results = append(results, r.processSubscription(sub, fetcher))
 	}
 
 	return results, nil
@@ -124,12 +127,20 @@ func FilterSubscriptions(subs []models.Subscription, filter Filter) []models.Sub
 	return results
 }
 
-func (r *Runner) processSubscription(sub models.Subscription) Result {
+func (r *Runner) processSubscription(sub models.Subscription, fetcher *subscriptionFetcher) Result {
 	result := Result{
-		Subscription:  sub,
-		BeforeCredits: sub.CurrentCredits,
-		BeforeResets:  sub.ResetTimes,
+		Subscription: sub,
 	}
+
+	if fetcher != nil {
+		if current, ok := fetcher.current(sub.ID); ok {
+			sub = current
+			result.Subscription = current
+		}
+	}
+
+	result.BeforeCredits = sub.CurrentCredits
+	result.BeforeResets = sub.ResetTimes
 
 	if skip, reason := r.shouldSkipByThreshold(sub); skip {
 		result.Skipped = true
@@ -145,6 +156,17 @@ func (r *Runner) processSubscription(sub models.Subscription) Result {
 
 	current := sub
 	minRequired := r.minRequiredResetTimes()
+
+	refreshAndGet := func() (*models.Subscription, error) {
+		if fetcher != nil {
+			updated, err := fetcher.refreshAndGet(current.ID)
+			if err != nil {
+				return nil, err
+			}
+			return updated, nil
+		}
+		return r.fetchSubscription(current.ID)
+	}
 
 	for attempts := 1; attempts <= 2; attempts++ {
 		result.Attempts = attempts
@@ -162,7 +184,7 @@ func (r *Runner) processSubscription(sub models.Subscription) Result {
 			time.Sleep(r.opts.SleepBetween)
 		}
 
-		updated, fetchErr := r.fetchSubscription(current.ID)
+		updated, fetchErr := refreshAndGet()
 		if fetchErr != nil {
 			result.Err = fmt.Errorf("验证订阅 %d 状态失败: %w", current.ID, fetchErr)
 			return result
@@ -198,6 +220,50 @@ func (r *Runner) processSubscription(sub models.Subscription) Result {
 	}
 
 	return result
+}
+
+type subscriptionFetcher struct {
+	client *api.Client
+	cache  map[int]models.Subscription
+}
+
+func newSubscriptionFetcher(client *api.Client, initial []models.Subscription) *subscriptionFetcher {
+	cache := make(map[int]models.Subscription, len(initial))
+	for _, sub := range initial {
+		cache[sub.ID] = sub
+	}
+	return &subscriptionFetcher{
+		client: client,
+		cache:  cache,
+	}
+}
+
+func (f *subscriptionFetcher) current(id int) (models.Subscription, bool) {
+	if f == nil {
+		return models.Subscription{}, false
+	}
+	sub, ok := f.cache[id]
+	return sub, ok
+}
+
+func (f *subscriptionFetcher) refreshAndGet(id int) (*models.Subscription, error) {
+	if f == nil {
+		return nil, fmt.Errorf("subscription fetcher unavailable")
+	}
+	subs, err := f.client.GetSubscriptions()
+	if err != nil {
+		return nil, err
+	}
+	cache := make(map[int]models.Subscription, len(subs))
+	for _, sub := range subs {
+		cache[sub.ID] = sub
+	}
+	f.cache = cache
+	updated, ok := f.cache[id]
+	if !ok {
+		return nil, fmt.Errorf("未找到订阅 ID=%d", id)
+	}
+	return &updated, nil
 }
 
 func (r *Runner) fetchSubscription(id int) (*models.Subscription, error) {
