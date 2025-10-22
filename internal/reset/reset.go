@@ -280,6 +280,10 @@ func (r *Runner) fetchSubscription(id int) (*models.Subscription, error) {
 }
 
 func (r *Runner) shouldSkipByThreshold(sub models.Subscription) (bool, string) {
+	if strings.EqualFold(r.opts.ResetType, "second") {
+		return false, ""
+	}
+
 	if sub.SubscriptionPlan.CreditLimit <= 0 {
 		return false, ""
 	}
