@@ -56,8 +56,8 @@ func (c *Client) makeRequest(method, endpoint string, body interface{}) ([]byte,
 		return nil, fmt.Errorf("创建请求失败: %w", err)
 	}
 
-	// 设置请求头
-	req.Header.Set("Authorization", c.APIKey)
+	// 设置请求头 - 使用 Bearer 认证（适配管理后台 API）
+	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	logger.Debug("发起请求: %s %s", method, url)
@@ -118,22 +118,36 @@ func (c *Client) GetUsage() (*models.UsageResponse, error) {
 	return &usage, nil
 }
 
-// GetSubscriptions 获取所有订阅信息
+// GetSubscriptions 获取所有订阅信息（使用管理后台 API）
 func (c *Client) GetSubscriptions() ([]models.Subscription, error) {
 	logger.Info("获取订阅列表...")
 
-	respBody, err := c.makeRequest("POST", "/api/subscription", nil)
+	// 使用管理后台 API 端点
+	respBody, err := c.makeRequest("GET", "/admin-api/cc-admin/system/subscription/my", nil)
 	if err != nil {
 		return nil, err
 	}
 
-	var subscriptions []models.Subscription
-	if err := json.Unmarshal(respBody, &subscriptions); err != nil {
+	// 解析管理后台 API 响应格式
+	var adminResp struct {
+		Code     int                   `json:"code"`
+		OK       bool                  `json:"ok"`
+		Msg      string                `json:"msg"`
+		Data     []models.Subscription `json:"data"`
+		DataType int                   `json:"dataType"`
+	}
+
+	if err := json.Unmarshal(respBody, &adminResp); err != nil {
 		return nil, fmt.Errorf("解析订阅列表失败: %w", err)
 	}
 
-	logger.Info("订阅列表获取成功，共 %d 个订阅", len(subscriptions))
-	return subscriptions, nil
+	// 检查响应是否成功
+	if !adminResp.OK {
+		return nil, fmt.Errorf("获取订阅列表失败: %s (错误码: %d)", adminResp.Msg, adminResp.Code)
+	}
+
+	logger.Info("订阅列表获取成功，共 %d 个订阅", len(adminResp.Data))
+	return adminResp.Data, nil
 }
 
 // GetTargetSubscription 获取目标订阅信息（根据配置的计划名称）
@@ -209,7 +223,7 @@ func (c *Client) ResetCredits(subscriptionID int) (*models.ResetResponse, error)
 		}
 	}
 
-	endpoint := fmt.Sprintf("/api/reset-credits/%d", subscriptionID)
+	endpoint := fmt.Sprintf("/admin-api/cc-admin/system/subscription/my/reset-credits/%d", subscriptionID)
 	logger.Info("重置订阅积分: subscriptionID=%d", subscriptionID)
 
 	respBody, err := c.makeRequest("POST", endpoint, nil)
@@ -217,36 +231,41 @@ func (c *Client) ResetCredits(subscriptionID int) (*models.ResetResponse, error)
 		return nil, err
 	}
 
-	// 尝试解析成功响应
-	var resetResp models.ResetResponse
+	// 解析管理后台 API 响应格式
+	var adminResp struct {
+		Code int    `json:"code"`
+		OK   bool   `json:"ok"`
+		Msg  string `json:"msg"`
+	}
 
-	// 首先尝试解析为标准响应格式
-	if err := json.Unmarshal(respBody, &resetResp); err == nil {
-		// 解析成功，检查是否有错误
-		if resetResp.Error != nil {
-			return &resetResp, fmt.Errorf("重置失败: %s", resetResp.Error.Message)
+	if err := json.Unmarshal(respBody, &adminResp); err != nil {
+		return nil, fmt.Errorf("解析重置响应失败: %w", err)
+	}
+
+	// 检查响应是否成功
+	if !adminResp.OK {
+		// 检查特定的错误码
+		if adminResp.Code == 30001 {
+			return nil, fmt.Errorf("重置失败: %s (今日已重置或时间间隔不足5小时)", adminResp.Msg)
 		}
-		logger.Info("重置成功: %s", resetResp.Message)
-		return &resetResp, nil
+		return nil, fmt.Errorf("重置失败: %s (错误码: %d)", adminResp.Msg, adminResp.Code)
 	}
 
-	// 如果标准格式解析失败，尝试作为原始响应处理
-	logger.Debug("重置响应原始内容: %s", string(respBody))
+	logger.Info("重置成功: %s", adminResp.Msg)
 
-	// 构造一个基本的成功响应
-	resetResp = models.ResetResponse{
+	// 构造兼容的返回格式
+	return &models.ResetResponse{
 		Success: true,
-		Message: "重置请求已发送",
-	}
-
-	return &resetResp, nil
+		Message: adminResp.Msg,
+	}, nil
 }
 
 // TestConnection 测试 API 连接
 func (c *Client) TestConnection() error {
 	logger.Info("测试 API 连接...")
 
-	_, err := c.GetUsage()
+	// 改用 GetSubscriptions 测试连接（不再依赖 GetUsage）
+	_, err := c.GetSubscriptions()
 	if err != nil {
 		return fmt.Errorf("连接测试失败: %w", err)
 	}
@@ -255,30 +274,30 @@ func (c *Client) TestConnection() error {
 	return nil
 }
 
-// GetAccountInfo 获取账号信息（通过 Usage API）
+// GetAccountInfo 获取账号信息（从订阅列表获取）
 func (c *Client) GetAccountInfo() (*models.AccountConfig, error) {
-	usage, err := c.GetUsage()
+	// 直接从订阅列表获取账号信息
+	subscriptions, err := c.GetSubscriptions()
 	if err != nil {
 		return nil, fmt.Errorf("获取账号信息失败: %w", err)
 	}
 
-	accountConfig := &models.AccountConfig{
-		APIKey:        c.APIKey,
-		KeyID:         usage.KeyID,
-		EmployeeID:    usage.EmployeeID,
-		EmployeeName:  "", // Usage API 没有直接返回，需要从订阅中获取
-		EmployeeEmail: "", // Usage API 没有直接返回，需要从订阅中获取
-		Name:          usage.Name,
-		Enabled:       true,
-		AddedAt:       time.Now().Format(time.RFC3339),
+	if len(subscriptions) == 0 {
+		return nil, fmt.Errorf("未找到任何订阅信息")
 	}
 
-	// 尝试从订阅列表中获取员工信息
-	subscriptions, err := c.GetSubscriptions()
-	if err == nil && len(subscriptions) > 0 {
-		// 取第一个订阅的员工信息
-		accountConfig.EmployeeName = subscriptions[0].EmployeeName
-		accountConfig.EmployeeEmail = subscriptions[0].EmployeeEmail
+	// 从第一个订阅中提取账号信息
+	firstSub := subscriptions[0]
+
+	accountConfig := &models.AccountConfig{
+		APIKey:        c.APIKey,
+		KeyID:         fmt.Sprintf("token_%d", firstSub.EmployeeID), // 生成唯一标识
+		EmployeeID:    firstSub.EmployeeID,
+		EmployeeName:  firstSub.EmployeeName,
+		EmployeeEmail: firstSub.EmployeeEmail,
+		Name:          fmt.Sprintf("%s's Account", firstSub.EmployeeName),
+		Enabled:       true,
+		AddedAt:       time.Now().Format(time.RFC3339),
 	}
 
 	logger.Info("账号信息获取成功: KeyID=%s, Name=%s, EmployeeID=%d, Email=%s",
