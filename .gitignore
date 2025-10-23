@@ -45,3 +45,15 @@ Thumbs.db
 
 # Docker
 .dockerignore
+
+# 测试脚本（临时测试文件）
+test_*.py
+test_*.go
+
+# 临时文档
+*_PLAN.md
+*_DOCUMENTATION.md
+*_SUMMARY.md
+*_EXPLAINED.md
+*_ANALYSIS.md
+*_GUIDE.md
