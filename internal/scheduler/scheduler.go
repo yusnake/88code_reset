@@ -159,12 +159,14 @@ func (s *Scheduler) checkAndExecute() {
 
 	// 检查是否需要执行第一次重置（18:50）
 	if currentHour == FirstResetHour && currentMinute == FirstResetMinute {
+		s.logAgg.Flush()
 		if !s.enableFirstReset {
-			logger.Debug("18:55重置已禁用，跳过")
-			s.logAgg.Flush()
+			logger.Info("========================================")
+			logger.Info("触发第一次重置检查（18:50）")
+			logger.Info("第一次重置已禁用，跳过执行")
+			logger.Info("========================================")
 			return
 		}
-		s.logAgg.Flush()
 		s.executeReset("first")
 		return
 	}
