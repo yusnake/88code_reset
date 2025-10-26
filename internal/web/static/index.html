@@ -733,9 +733,8 @@
             apiRequest(`/api/tokens/${tokenId}/refresh`, { method: 'PUT' })
                 .then(data => {
                     loadTokens();
-                    alert('订阅信息已刷新');
                 })
-                .catch(err => alert('刷新失败: ' + err.message));
+                .catch(err => console.error('刷新失败:', err.message));
         }
 
         function resetToken(tokenId) {
@@ -748,9 +747,8 @@
             .then(data => {
                 loadTokens();
                 loadStatus();
-                alert('重置成功！');
             })
-            .catch(err => alert('重置失败: ' + err.message));
+            .catch(err => console.error('重置失败:', err.message));
         }
 
         function toggleToken(tokenId) {
@@ -759,7 +757,7 @@
                     loadTokens();
                     loadStatus();
                 })
-                .catch(err => alert('操作失败: ' + err.message));
+                .catch(err => console.error('操作失败:', err.message));
         }
 
         function deleteToken(tokenId, name) {
@@ -769,9 +767,8 @@
                 .then(data => {
                     loadTokens();
                     loadStatus();
-                    alert('Token 已删除');
                 })
-                .catch(err => alert('删除失败: ' + err.message));
+                .catch(err => console.error('删除失败:', err.message));
         }
 
         function manualReset(resetType) {
@@ -784,9 +781,8 @@
             .then(data => {
                 loadTokens();
                 loadStatus();
-                alert(`重置完成！成功: ${data.success_count}/${data.total}`);
             })
-            .catch(err => alert('重置失败: ' + err.message));
+            .catch(err => console.error('重置失败:', err.message));
         }
 
         // 点击模态框外部关闭
