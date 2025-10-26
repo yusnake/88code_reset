@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"time"
 
@@ -35,14 +36,19 @@ func NewServer(port int, tokenManager *token.Manager, configMgr *config.DynamicC
 	// 创建路由
 	mux := http.NewServeMux()
 
-	// 静态文件
-	mux.Handle("/", http.FileServer(http.FS(staticFiles)))
+	// 静态文件 - 从 static 子目录提供服务
+	staticFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		panic(fmt.Sprintf("无法创建静态文件系统: %v", err))
+	}
+	mux.Handle("/", http.FileServer(http.FS(staticFS)))
 
 	// API 路由
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/status", s.withAuth(s.handleGetStatus))
 	mux.HandleFunc("/api/config", s.withAuth(s.handleConfig))
 	mux.HandleFunc("/api/tokens", s.withAuth(s.handleTokens))
+	mux.HandleFunc("/api/tokens/batch", s.withAuth(s.handleBatchAddTokens))
 	mux.HandleFunc("/api/tokens/", s.withAuth(s.handleTokenDetail))
 	mux.HandleFunc("/api/reset/trigger", s.withAuth(s.handleManualReset))
 

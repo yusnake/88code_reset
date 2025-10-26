@@ -413,6 +413,7 @@
         <div class="card">
             <h2>🔑 Token 管理</h2>
             <button class="btn btn-primary" onclick="showAddTokenModal()">➕ 添加新 Token</button>
+            <button class="btn btn-primary" onclick="showBatchAddTokenModal()" style="margin-left: 10px;">📝 批量添加</button>
             <div id="token-loading" class="loading">加载中...</div>
             <div id="token-list" class="token-list"></div>
         </div>
@@ -434,6 +435,28 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeAddTokenModal()">取消</button>
                 <button class="btn btn-primary" onclick="addToken()">添加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批量添加 Token 模态框 -->
+    <div id="batch-add-token-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">批量添加 Token</div>
+            <div id="batch-add-token-error" class="error" style="display: none;"></div>
+            <div class="form-group">
+                <label>Token 名称前缀（可选）</label>
+                <input type="text" id="batch-token-prefix" placeholder="例如: 账号">
+                <small style="color: #666;">如果不填，将自动命名为 Token-1, Token-2...</small>
+            </div>
+            <div class="form-group">
+                <label>API Keys（每行一个）</label>
+                <textarea id="batch-token-apikeys" rows="10" placeholder="sk-ant-...&#10;sk-ant-...&#10;sk-ant-..." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace;"></textarea>
+                <small style="color: #666;">支持多个 API Key，每行一个</small>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeBatchAddTokenModal()">取消</button>
+                <button class="btn btn-primary" onclick="batchAddTokens()">批量添加</button>
             </div>
         </div>
     </div>
@@ -655,6 +678,54 @@
                 const errorDiv = document.getElementById('add-token-error');
                 errorDiv.textContent = '添加失败: ' + (err.message || '未知错误');
                 errorDiv.style.display = 'block';
+            });
+        }
+
+        function showBatchAddTokenModal() {
+            document.getElementById('batch-token-prefix').value = '';
+            document.getElementById('batch-token-apikeys').value = '';
+            document.getElementById('batch-add-token-error').style.display = 'none';
+            document.getElementById('batch-add-token-modal').style.display = 'block';
+        }
+
+        function closeBatchAddTokenModal() {
+            document.getElementById('batch-add-token-modal').style.display = 'none';
+        }
+
+        function batchAddTokens() {
+            const prefix = document.getElementById('batch-token-prefix').value.trim();
+            const apiKeys = document.getElementById('batch-token-apikeys').value.trim();
+
+            if (!apiKeys) {
+                alert('请输入至少一个 API Key');
+                return;
+            }
+
+            // 显示处理中
+            const errorDiv = document.getElementById('batch-add-token-error');
+            errorDiv.textContent = '正在批量添加，请稍候...';
+            errorDiv.style.display = 'block';
+            errorDiv.style.color = '#007bff';
+
+            apiRequest('/api/tokens/batch', {
+                method: 'POST',
+                body: JSON.stringify({ api_keys: apiKeys, prefix: prefix || '' })
+            })
+            .then(data => {
+                closeBatchAddTokenModal();
+                loadTokens();
+                loadStatus();
+
+                // 显示详细结果
+                const message = `${data.message}\n\n详细信息:\n` +
+                    data.results.map(r =>
+                        `${r.success ? '✅' : '❌'} ${r.name}: ${r.success ? '成功' : r.error}`
+                    ).join('\n');
+                alert(message);
+            })
+            .catch(err => {
+                errorDiv.textContent = '批量添加失败: ' + (err.message || '未知错误');
+                errorDiv.style.color = '#dc3545';
             });
         }
 

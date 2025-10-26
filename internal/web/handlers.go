@@ -65,6 +65,78 @@ func (s *Server) handleAddToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleBatchAddTokens 批量添加 Token
+func (s *Server) handleBatchAddTokens(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req struct {
+		APIKeys string `json:"api_keys"` // 多个 API Key，每行一个
+		Prefix  string `json:"prefix"`   // Token 名称前缀，可选
+	}
+
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid JSON: "+err.Error())
+		return
+	}
+
+	if req.APIKeys == "" {
+		writeError(w, http.StatusBadRequest, "API Keys are required")
+		return
+	}
+
+	// 按行分割
+	lines := strings.Split(req.APIKeys, "\n")
+	var results []map[string]interface{}
+	successCount := 0
+	failCount := 0
+
+	for i, line := range lines {
+		apiKey := strings.TrimSpace(line)
+		if apiKey == "" {
+			continue // 跳过空行
+		}
+
+		// 生成 Token 名称
+		name := fmt.Sprintf("%s%d", req.Prefix, i+1)
+		if req.Prefix == "" {
+			name = fmt.Sprintf("Token-%d", i+1)
+		}
+
+		// 添加 Token
+		token, err := s.tokenManager.AddToken(apiKey, name)
+		if err != nil {
+			results = append(results, map[string]interface{}{
+				"api_key": apiKey[:10] + "...",
+				"name":    name,
+				"success": false,
+				"error":   err.Error(),
+			})
+			failCount++
+			logger.Warn("批量添加 Token 失败: %s - %v", name, err)
+		} else {
+			results = append(results, map[string]interface{}{
+				"api_key": apiKey[:10] + "...",
+				"name":    name,
+				"success": true,
+				"token":   token,
+			})
+			successCount++
+			logger.Info("通过批量添加 Token: %s", token.Name)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success":       true,
+		"message":       fmt.Sprintf("批量添加完成: 成功 %d, 失败 %d", successCount, failCount),
+		"success_count": successCount,
+		"fail_count":    failCount,
+		"results":       results,
+	})
+}
+
 // handleTokenDetail Token 详情操作
 func (s *Server) handleTokenDetail(w http.ResponseWriter, r *http.Request) {
 	// 提取 Token ID
