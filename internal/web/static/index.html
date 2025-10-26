@@ -60,7 +60,17 @@
         <header class="bg-gradient-to-r from-primary to-secondary text-white shadow-lg">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 <div class="flex justify-between items-center">
-                    <h1 class="text-3xl font-bold">🚀 88code 订阅重置管理</h1>
+                    <div class="flex items-center gap-6">
+                        <h1 class="text-3xl font-bold">🚀 88code 订阅重置管理</h1>
+                        <nav class="flex gap-2">
+                            <button onclick="showPage('dashboard')" id="nav-dashboard" class="px-4 py-2 rounded-lg transition bg-white/30">
+                                📊 主页
+                            </button>
+                            <button onclick="showPage('logs')" id="nav-logs" class="px-4 py-2 rounded-lg transition hover:bg-white/20">
+                                📋 日志
+                            </button>
+                        </nav>
+                    </div>
                     <button onclick="logout()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg transition">
                         退出登录
                     </button>
@@ -68,7 +78,8 @@
             </div>
         </header>
 
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- 主页内容 -->
+        <div id="page-dashboard" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <!-- 系统状态 -->
             <div class="bg-white rounded-xl shadow-md p-6 mb-6">
                 <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
@@ -201,6 +212,50 @@
                     <p class="mt-2">加载中...</p>
                 </div>
                 <div id="token-list" class="space-y-2"></div>
+            </div>
+        </div>
+
+        <!-- 日志页面 -->
+        <div id="page-logs" class="hidden max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="bg-white rounded-xl shadow-md p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 flex items-center">
+                        <span class="w-2 h-8 bg-primary rounded-full mr-3"></span>
+                        📋 系统日志
+                    </h2>
+                    <div class="flex gap-3">
+                        <button onclick="clearLogs()" class="bg-red-500 hover:bg-red-600 text-white font-semibold px-4 py-2 rounded-lg transition">
+                            🗑️ 清空日志
+                        </button>
+                        <button onclick="loadLogs()" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg transition">
+                            🔄 刷新
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mb-4 flex gap-2 flex-wrap">
+                    <button onclick="filterLogs('all')" id="filter-all" class="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-medium transition">
+                        全部
+                    </button>
+                    <button onclick="filterLogs('info')" id="filter-info" class="px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-sm font-medium transition">
+                        ℹ️ 信息
+                    </button>
+                    <button onclick="filterLogs('success')" id="filter-success" class="px-3 py-1 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-sm font-medium transition">
+                        ✅ 成功
+                    </button>
+                    <button onclick="filterLogs('warning')" id="filter-warning" class="px-3 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg text-sm font-medium transition">
+                        ⚠️ 警告
+                    </button>
+                    <button onclick="filterLogs('error')" id="filter-error" class="px-3 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-sm font-medium transition">
+                        ❌ 错误
+                    </button>
+                </div>
+
+                <div id="log-container" class="bg-gray-900 text-gray-100 rounded-lg p-4 font-mono text-sm h-[600px] overflow-y-auto">
+                    <div id="log-content" class="space-y-1">
+                        <div class="text-gray-500">等待日志加载...</div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -373,6 +428,140 @@
             location.reload();
         }
 
+        // 页面切换
+        let currentPage = 'dashboard';
+        let logInterval = null;
+        let allLogs = [];
+        let currentFilter = 'all';
+
+        function showPage(pageName) {
+            // 更新导航按钮状态
+            document.querySelectorAll('nav button').forEach(btn => {
+                btn.classList.remove('bg-white/30');
+                btn.classList.add('hover:bg-white/20');
+            });
+            document.getElementById(`nav-${pageName}`).classList.add('bg-white/30');
+            document.getElementById(`nav-${pageName}`).classList.remove('hover:bg-white/20');
+
+            // 切换页面显示
+            document.getElementById('page-dashboard').classList.add('hidden');
+            document.getElementById('page-logs').classList.add('hidden');
+            document.getElementById(`page-${pageName}`).classList.remove('hidden');
+
+            currentPage = pageName;
+
+            // 如果切换到日志页面，加载日志并开始自动刷新
+            if (pageName === 'logs') {
+                loadLogs();
+                if (logInterval) clearInterval(logInterval);
+                logInterval = setInterval(loadLogs, 5000); // 每5秒刷新一次
+            } else {
+                // 离开日志页面时停止自动刷新
+                if (logInterval) {
+                    clearInterval(logInterval);
+                    logInterval = null;
+                }
+            }
+        }
+
+        // 日志管理
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+
+            allLogs.unshift({
+                timestamp,
+                message,
+                type,
+                id: Date.now()
+            });
+
+            // 保留最近 500 条日志
+            if (allLogs.length > 500) {
+                allLogs = allLogs.slice(0, 500);
+            }
+
+            // 保存到 localStorage
+            localStorage.setItem('systemLogs', JSON.stringify(allLogs));
+
+            // 如果当前在日志页面，更新显示
+            if (currentPage === 'logs') {
+                renderLogs();
+            }
+        }
+
+        function loadLogs() {
+            const savedLogs = localStorage.getItem('systemLogs');
+            if (savedLogs) {
+                allLogs = JSON.parse(savedLogs);
+            }
+            renderLogs();
+        }
+
+        function renderLogs() {
+            const container = document.getElementById('log-content');
+            const filteredLogs = currentFilter === 'all'
+                ? allLogs
+                : allLogs.filter(log => log.type === currentFilter);
+
+            if (filteredLogs.length === 0) {
+                container.innerHTML = '<div class="text-gray-500">暂无日志</div>';
+                return;
+            }
+
+            const typeColors = {
+                info: 'text-blue-400',
+                success: 'text-green-400',
+                warning: 'text-orange-400',
+                error: 'text-red-400'
+            };
+
+            const typeIcons = {
+                info: 'ℹ️',
+                success: '✅',
+                warning: '⚠️',
+                error: '❌'
+            };
+
+            container.innerHTML = filteredLogs.map(log => `
+                <div class="hover:bg-gray-800 px-2 py-1 rounded">
+                    <span class="text-gray-500">[${log.timestamp}]</span>
+                    <span class="${typeColors[log.type]}">${typeIcons[log.type]}</span>
+                    <span class="text-gray-300">${log.message}</span>
+                </div>
+            `).join('');
+
+            // 自动滚动到底部
+            const logContainer = document.getElementById('log-container');
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function filterLogs(type) {
+            currentFilter = type;
+
+            // 更新按钮状态
+            document.querySelectorAll('[id^="filter-"]').forEach(btn => {
+                btn.classList.remove('ring-2', 'ring-primary');
+            });
+            document.getElementById(`filter-${type}`).classList.add('ring-2', 'ring-primary');
+
+            renderLogs();
+        }
+
+        function clearLogs() {
+            if (!confirm('确定要清空所有日志吗？')) return;
+            allLogs = [];
+            localStorage.removeItem('systemLogs');
+            renderLogs();
+            showNotification('日志已清空', 'success');
+        }
+
         // 初始化应用
         function initApp() {
             loadStatus();
@@ -471,17 +660,20 @@
                 web_port: 8966
             };
 
+            addLog(`保存配置: 第一次=${config.first_reset.enabled}, 第二次=${config.second_reset.enabled}`, 'info');
             apiRequest('/api/config', {
                 method: 'PUT',
                 body: JSON.stringify(config)
             })
             .then(data => {
+                addLog('配置保存成功', 'success');
                 const successDiv = document.getElementById('config-success');
                 successDiv.textContent = '✅ 配置保存成功！';
                 successDiv.classList.remove('hidden');
                 setTimeout(() => successDiv.classList.add('hidden'), 3000);
             })
             .catch(err => {
+                addLog(`配置保存失败: ${err.message}`, 'error');
                 const errorDiv = document.getElementById('config-error');
                 errorDiv.textContent = '❌ 保存失败: ' + err.message;
                 errorDiv.classList.remove('hidden');
@@ -643,6 +835,7 @@
                 return;
             }
 
+            addLog(`正在添加 Token: ${name || 'Unnamed'}`, 'info');
             apiRequest('/api/tokens', {
                 method: 'POST',
                 body: JSON.stringify({ name: name || undefined, api_key: apiKey })
@@ -651,9 +844,11 @@
                 closeAddTokenModal();
                 loadTokens();
                 loadStatus();
+                addLog(`Token 添加成功: ${data.token.name}`, 'success');
                 showNotification('Token 添加成功！', 'success');
             })
             .catch(err => {
+                addLog(`Token 添加失败: ${name || 'Unnamed'} - ${err.message}`, 'error');
                 const errorDiv = document.getElementById('add-token-error');
                 errorDiv.textContent = '添加失败: ' + (err.message || '未知错误');
                 errorDiv.classList.remove('hidden');
@@ -670,6 +865,9 @@
                 return;
             }
 
+            const lines = apiKeys.split('\n').filter(line => line.trim());
+            addLog(`开始批量添加 Token: ${lines.length} 个`, 'info');
+
             const errorDiv = document.getElementById('batch-add-token-error');
             errorDiv.textContent = '正在批量添加，请稍候...';
             errorDiv.classList.remove('hidden');
@@ -684,9 +882,11 @@
                 closeBatchAddTokenModal();
                 loadTokens();
                 loadStatus();
+                addLog(`批量添加完成: 成功 ${data.success_count}, 失败 ${data.fail_count}`, data.fail_count > 0 ? 'warning' : 'success');
                 showNotification(`批量添加完成: 成功 ${data.success_count}, 失败 ${data.fail_count}`, 'success');
             })
             .catch(err => {
+                addLog(`批量添加失败: ${err.message}`, 'error');
                 errorDiv.textContent = '批量添加失败: ' + (err.message || '未知错误');
                 errorDiv.classList.remove('bg-blue-50', 'border-blue-200', 'text-blue-700');
                 errorDiv.classList.add('bg-red-50', 'border-red-200', 'text-red-700');
@@ -695,17 +895,23 @@
 
         // Token 操作
         function refreshToken(tokenId) {
+            addLog(`正在刷新 Token: ${tokenId}`, 'info');
             apiRequest(`/api/tokens/${tokenId}/refresh`, { method: 'PUT' })
                 .then(data => {
                     loadTokens();
+                    addLog(`Token 刷新成功: ${tokenId}`, 'success');
                     showNotification('订阅信息已刷新', 'success');
                 })
-                .catch(err => console.error('刷新失败:', err.message));
+                .catch(err => {
+                    addLog(`Token 刷新失败: ${tokenId} - ${err.message}`, 'error');
+                    console.error('刷新失败:', err.message);
+                });
         }
 
         function resetToken(tokenId) {
             if (!confirm('确定要重置此 Token 的订阅吗？')) return;
 
+            addLog(`正在重置 Token: ${tokenId}`, 'info');
             apiRequest(`/api/tokens/${tokenId}/reset`, {
                 method: 'PUT',
                 body: JSON.stringify({ reset_type: 'second' })
@@ -713,9 +919,13 @@
             .then(data => {
                 loadTokens();
                 loadStatus();
+                addLog(`Token 重置成功: ${tokenId}`, 'success');
                 showNotification('重置成功！', 'success');
             })
-            .catch(err => console.error('重置失败:', err.message));
+            .catch(err => {
+                addLog(`Token 重置失败: ${tokenId} - ${err.message}`, 'error');
+                console.error('重置失败:', err.message);
+            });
         }
 
         function toggleToken(tokenId) {
@@ -723,21 +933,31 @@
                 .then(data => {
                     loadTokens();
                     loadStatus();
+                    const action = data.token.enabled ? '启用' : '禁用';
+                    addLog(`Token ${action}: ${tokenId}`, 'success');
                     showNotification(data.token.enabled ? 'Token 已启用' : 'Token 已禁用', 'success');
                 })
-                .catch(err => console.error('操作失败:', err.message));
+                .catch(err => {
+                    addLog(`Token 切换状态失败: ${tokenId} - ${err.message}`, 'error');
+                    console.error('操作失败:', err.message);
+                });
         }
 
         function deleteToken(tokenId, name) {
             if (!confirm(`确定要删除 Token "${name}" 吗？此操作不可恢复！`)) return;
 
+            addLog(`正在删除 Token: ${name} (${tokenId})`, 'warning');
             apiRequest(`/api/tokens/${tokenId}`, { method: 'DELETE' })
                 .then(data => {
                     loadTokens();
                     loadStatus();
+                    addLog(`Token 已删除: ${name}`, 'success');
                     showNotification('Token 已删除', 'success');
                 })
-                .catch(err => console.error('删除失败:', err.message));
+                .catch(err => {
+                    addLog(`Token 删除失败: ${name} - ${err.message}`, 'error');
+                    console.error('删除失败:', err.message);
+                });
         }
 
         function manualReset() {
@@ -759,6 +979,7 @@
 
             if (!confirm(`确定要手动触发所有启用的 Token 进行重置吗？`)) return;
 
+            addLog(`手动触发重置: 类型=${resetType}`, 'info');
             apiRequest('/api/reset/trigger', {
                 method: 'POST',
                 body: JSON.stringify({ reset_type: resetType })
@@ -766,9 +987,13 @@
             .then(data => {
                 loadTokens();
                 loadStatus();
+                addLog(`手动重置完成: 成功 ${data.success_count}/${data.total}`, 'success');
                 showNotification(`重置完成！成功: ${data.success_count}/${data.total}`, 'success');
             })
-            .catch(err => console.error('重置失败:', err.message));
+            .catch(err => {
+                addLog(`手动重置失败: ${err.message}`, 'error');
+                console.error('重置失败:', err.message);
+            });
         }
 
         // 点击模态框外部关闭
