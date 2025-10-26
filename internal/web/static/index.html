@@ -706,6 +706,11 @@
                 });
         }
 
+        // 获取 Token 显示名称（优先使用邮箱名）
+        function getTokenDisplayName(token) {
+            return token.subscription?.employee_email || token.name || token.id;
+        }
+
         // 渲染 Token 列表
         function renderTokens(tokens) {
             const container = document.getElementById('token-list');
@@ -855,7 +860,7 @@
                 closeAddTokenModal();
                 loadTokens();
                 loadStatus();
-                addLog(`Token 添加成功: ${data.token.name}`, 'success');
+                addLog(`Token 添加成功: ${getTokenDisplayName(data.token)}`, 'success');
                 showNotification('Token 添加成功！', 'success');
             })
             .catch(err => {
@@ -916,7 +921,7 @@
                 .then(data => {
                     addLog(`🟢 API响应: ${JSON.stringify(data)}`, 'success');
                     loadTokens();
-                    addLog(`Token 刷新成功: ${tokenId}`, 'success');
+                    addLog(`Token 刷新成功: ${getTokenDisplayName(data.token)}`, 'success');
                     showNotification('订阅信息已刷新', 'success');
                 })
                 .catch(err => {
@@ -959,12 +964,12 @@
                             apiRequest(requestUrl, { method: requestMethod })
                                 .then(data => {
                                     addLog(`🟢 [批量刷新 ${index + 1}/${enabledTokens.length}] API响应: ${JSON.stringify(data)}`, 'success');
-                                    addLog(`Token 刷新成功: ${token.name || token.id}`, 'success');
+                                    addLog(`Token 刷新成功: ${getTokenDisplayName(token)}`, 'success');
                                     successCount++;
                                 })
                                 .catch(err => {
                                     addLog(`🔴 [批量刷新 ${index + 1}/${enabledTokens.length}] API错误: ${err.message}`, 'error');
-                                    addLog(`Token 刷新失败: ${token.name || token.id} - ${err.message}`, 'error');
+                                    addLog(`Token 刷新失败: ${getTokenDisplayName(token)} - ${err.message}`, 'error');
                                     failCount++;
                                 })
                                 .finally(() => {
@@ -997,7 +1002,7 @@
             .then(data => {
                 loadTokens();
                 loadStatus();
-                addLog(`Token 重置成功: ${tokenId}`, 'success');
+                addLog(`Token 重置成功: ${getTokenDisplayName(data.token)}`, 'success');
                 showNotification('重置成功！', 'success');
             })
             .catch(err => {
@@ -1012,7 +1017,7 @@
                     loadTokens();
                     loadStatus();
                     const action = data.token.enabled ? '启用' : '禁用';
-                    addLog(`Token ${action}: ${tokenId}`, 'success');
+                    addLog(`Token ${action}: ${getTokenDisplayName(data.token)}`, 'success');
                     showNotification(data.token.enabled ? 'Token 已启用' : 'Token 已禁用', 'success');
                 })
                 .catch(err => {
