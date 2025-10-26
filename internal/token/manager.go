@@ -158,7 +158,6 @@ func (m *Manager) ResetToken(tokenID string, resetType string, thresholdPercent 
 
 	// 记录重置前状态
 	beforeCredits := targetSub.CurrentCredits
-	beforeResetTimes := targetSub.ResetTimes
 
 	// 执行重置逻辑
 	runner := reset.NewRunner(client, reset.Filter{
@@ -287,7 +286,6 @@ func findTargetSubscription(subs []models.Subscription) *models.Subscription {
 	for i := range subs {
 		sub := &subs[i]
 		planType := sub.SubscriptionPlan.PlanType
-		subscriptionName := sub.SubscriptionName
 
 		// 排除 PAYGO
 		if isPAYGO(sub) {
