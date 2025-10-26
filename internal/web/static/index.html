@@ -194,6 +194,12 @@
                     </h2>
                     <div class="flex gap-3">
                         <button
+                            onclick="refreshAllTokens()"
+                            class="bg-gradient-to-r from-cyan-500 to-cyan-600 text-white font-semibold px-4 py-2 rounded-lg hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200 flex items-center gap-2"
+                        >
+                            <span class="text-xl">🔄</span> 全部刷新
+                        </button>
+                        <button
                             onclick="showAddTokenModal()"
                             class="bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold px-4 py-2 rounded-lg hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200 flex items-center gap-2"
                         >
@@ -895,16 +901,83 @@
 
         // Token 操作
         function refreshToken(tokenId) {
+            const requestUrl = `/api/tokens/${tokenId}/refresh`;
+            const requestMethod = 'PUT';
+
+            addLog(`🔵 API请求: ${requestMethod} ${requestUrl}`, 'info');
             addLog(`正在刷新 Token: ${tokenId}`, 'info');
-            apiRequest(`/api/tokens/${tokenId}/refresh`, { method: 'PUT' })
+
+            apiRequest(requestUrl, { method: requestMethod })
                 .then(data => {
+                    addLog(`🟢 API响应: ${JSON.stringify(data)}`, 'success');
                     loadTokens();
                     addLog(`Token 刷新成功: ${tokenId}`, 'success');
                     showNotification('订阅信息已刷新', 'success');
                 })
                 .catch(err => {
+                    addLog(`🔴 API错误: ${err.message}`, 'error');
                     addLog(`Token 刷新失败: ${tokenId} - ${err.message}`, 'error');
-                    console.error('刷新失败:', err.message);
+                    showNotification('刷新失败: ' + err.message, 'error');
+                });
+        }
+
+        function refreshAllTokens() {
+            apiRequest('/api/tokens')
+                .then(data => {
+                    const tokens = data.tokens || [];
+                    const enabledTokens = tokens.filter(t => t.enabled);
+
+                    if (enabledTokens.length === 0) {
+                        showNotification('没有启用的 Token', 'warning');
+                        return;
+                    }
+
+                    if (!confirm(`确定要刷新所有 ${enabledTokens.length} 个启用的 Token 吗？`)) {
+                        return;
+                    }
+
+                    addLog(`开始批量刷新: ${enabledTokens.length} 个启用的 Token`, 'info');
+                    showNotification(`开始批量刷新 ${enabledTokens.length} 个 Token...`, 'info');
+
+                    let successCount = 0;
+                    let failCount = 0;
+                    let completedCount = 0;
+
+                    // 刷新每个 Token，间隔 1 秒避免请求过快
+                    enabledTokens.forEach((token, index) => {
+                        setTimeout(() => {
+                            const requestUrl = `/api/tokens/${token.id}/refresh`;
+                            const requestMethod = 'PUT';
+
+                            addLog(`🔵 [批量刷新 ${index + 1}/${enabledTokens.length}] API请求: ${requestMethod} ${requestUrl}`, 'info');
+
+                            apiRequest(requestUrl, { method: requestMethod })
+                                .then(data => {
+                                    addLog(`🟢 [批量刷新 ${index + 1}/${enabledTokens.length}] API响应: ${JSON.stringify(data)}`, 'success');
+                                    addLog(`Token 刷新成功: ${token.name || token.id}`, 'success');
+                                    successCount++;
+                                })
+                                .catch(err => {
+                                    addLog(`🔴 [批量刷新 ${index + 1}/${enabledTokens.length}] API错误: ${err.message}`, 'error');
+                                    addLog(`Token 刷新失败: ${token.name || token.id} - ${err.message}`, 'error');
+                                    failCount++;
+                                })
+                                .finally(() => {
+                                    completedCount++;
+                                    if (completedCount === enabledTokens.length) {
+                                        loadTokens();
+                                        loadStatus();
+                                        const message = `批量刷新完成: 成功 ${successCount}, 失败 ${failCount}`;
+                                        addLog(message, failCount > 0 ? 'warning' : 'success');
+                                        showNotification(message, failCount > 0 ? 'warning' : 'success');
+                                    }
+                                });
+                        }, index * 1000); // 每个 Token 间隔 1 秒
+                    });
+                })
+                .catch(err => {
+                    addLog(`获取 Token 列表失败: ${err.message}`, 'error');
+                    showNotification('获取 Token 列表失败', 'error');
                 });
         }
 
