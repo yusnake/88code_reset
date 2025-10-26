@@ -19,6 +19,8 @@ const (
 	ResponseLogDir       = "responses"          // API响应体保存目录
 	MultiAccountFile     = "accounts.json"      // 多账号配置文件
 	AccountsDir          = "accounts"           // 多账号数据目录
+	SystemLogsFile       = "system_logs.json"   // 系统日志文件
+	MaxSystemLogs        = 500                  // 最大系统日志数量
 )
 
 // Storage 存储管理器
@@ -419,4 +421,67 @@ func (s *Storage) SaveAPIResponse(endpoint, method string, requestBody, response
 
 	logger.Debug("API响应已保存: %s", filePath)
 	return nil
+}
+
+// AddSystemLog 添加系统日志
+func (s *Storage) AddSystemLog(logType, message string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	logs, err := s.loadSystemLogsUnsafe()
+	if err != nil {
+		logs = &models.SystemLogs{Logs: []models.SystemLog{}}
+	}
+
+	// 添加新日志
+	newLog := models.SystemLog{
+		Timestamp: time.Now(),
+		Type:      logType,
+		Message:   message,
+	}
+
+	// 添加到列表开头
+	logs.Logs = append([]models.SystemLog{newLog}, logs.Logs...)
+
+	// 限制日志数量
+	if len(logs.Logs) > MaxSystemLogs {
+		logs.Logs = logs.Logs[:MaxSystemLogs]
+	}
+
+	// 保存
+	filePath := filepath.Join(s.dataDir, SystemLogsFile)
+	return s.saveJSON(filePath, logs)
+}
+
+// LoadSystemLogs 加载系统日志
+func (s *Storage) LoadSystemLogs() (*models.SystemLogs, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.loadSystemLogsUnsafe()
+}
+
+// loadSystemLogsUnsafe 加载系统日志（不加锁版本，内部使用）
+func (s *Storage) loadSystemLogsUnsafe() (*models.SystemLogs, error) {
+	filePath := filepath.Join(s.dataDir, SystemLogsFile)
+	var logs models.SystemLogs
+
+	if err := s.loadJSON(filePath, &logs); err != nil {
+		if os.IsNotExist(err) {
+			return &models.SystemLogs{Logs: []models.SystemLog{}}, nil
+		}
+		return nil, err
+	}
+
+	return &logs, nil
+}
+
+// ClearSystemLogs 清空系统日志
+func (s *Storage) ClearSystemLogs() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	logs := &models.SystemLogs{Logs: []models.SystemLog{}}
+	filePath := filepath.Join(s.dataDir, SystemLogsFile)
+	return s.saveJSON(filePath, logs)
 }

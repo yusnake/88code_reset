@@ -139,9 +139,13 @@ func (s *Scheduler) checkAndExecute() {
 // executeReset 执行重置逻辑
 func (s *Scheduler) executeReset(resetType string) {
 	s.logAgg.Flush()
+	resetTypeText := map[string]string{"first": "第一次", "second": "第二次"}[resetType]
 	logger.Info("========================================")
-	logger.Info("触发%s重置任务", map[string]string{"first": "第一次", "second": "第二次"}[resetType])
+	logger.Info("触发%s重置任务", resetTypeText)
 	logger.Info("========================================")
+
+	// 记录到系统日志
+	s.storage.AddSystemLog("info", fmt.Sprintf("触发%s重置任务", resetTypeText))
 
 	// 尝试获取锁
 	operation := fmt.Sprintf("%s_reset", resetType)
@@ -161,10 +165,12 @@ func (s *Scheduler) executeReset(resetType string) {
 	// 检查今天是否已经执行过此次重置
 	if resetType == "first" && status.FirstResetToday {
 		logger.Info("今天已执行过第一次重置，跳过")
+		s.storage.AddSystemLog("info", "今天已执行过第一次重置，跳过")
 		return
 	}
 	if resetType == "second" && status.SecondResetToday {
 		logger.Info("今天已执行过第二次重置，跳过")
+		s.storage.AddSystemLog("info", "今天已执行过第二次重置，跳过")
 		return
 	}
 
@@ -192,12 +198,14 @@ func (s *Scheduler) executeReset(resetType string) {
 	results, err := runner.Execute()
 	if err != nil {
 		logger.Error("执行重置失败: %v", err)
+		s.storage.AddSystemLog("error", fmt.Sprintf("执行%s重置失败: %v", resetTypeText, err))
 		s.recordFailure(status, err.Error(), resetType)
 		return
 	}
 
 	if len(results) == 0 {
 		logger.Warn("未找到需要处理的订阅")
+		s.storage.AddSystemLog("warning", fmt.Sprintf("%s重置: 未找到需要处理的订阅", resetTypeText))
 		s.recordSkip(status, resetType, "无匹配订阅")
 		return
 	}
@@ -212,15 +220,18 @@ func (s *Scheduler) executeReset(resetType string) {
 		if res.Err != nil {
 			anyError = true
 			lastMessage = fmt.Sprintf("[%s] %v", res.Subscription.SubscriptionName, res.Err)
+			s.storage.AddSystemLog("error", fmt.Sprintf("%s重置失败: %s", resetTypeText, lastMessage))
 			continue
 		}
 		if res.Skipped {
 			lastMessage = fmt.Sprintf("[%s] 跳过: %s", res.Subscription.SubscriptionName, res.SkipReason)
+			s.storage.AddSystemLog("info", fmt.Sprintf("%s重置跳过: %s", resetTypeText, lastMessage))
 			continue
 		}
 
 		anySuccess = true
 		lastMessage = fmt.Sprintf("[%s] %s", res.Subscription.SubscriptionName, res.ResetResponse.Message)
+		s.storage.AddSystemLog("success", fmt.Sprintf("%s重置成功: %s", resetTypeText, lastMessage))
 		status.ResetTimesBeforeReset = res.BeforeResets
 		status.CreditsBeforeReset = res.BeforeCredits
 		status.ResetTimesAfterReset = res.AfterResets

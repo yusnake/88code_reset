@@ -102,7 +102,7 @@ func runWebMode(store *storage.Storage) {
 		fmt.Sscanf(envPort, "%d", &port)
 	}
 
-	webServer := web.NewServer(port, tokenMgr, configMgr, adminToken)
+	webServer := web.NewServer(port, tokenMgr, configMgr, store, adminToken)
 
 	// 启动 Web 服务器（在 goroutine 中）
 	go func() {

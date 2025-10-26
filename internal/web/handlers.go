@@ -359,3 +359,43 @@ func (s *Server) handleManualReset(w http.ResponseWriter, r *http.Request) {
 		"results":       results,
 	})
 }
+
+// handleSystemLogs 系统日志管理
+func (s *Server) handleSystemLogs(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.handleGetSystemLogs(w, r)
+	case http.MethodDelete:
+		s.handleClearSystemLogs(w, r)
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+	}
+}
+
+// handleGetSystemLogs 获取系统日志
+func (s *Server) handleGetSystemLogs(w http.ResponseWriter, r *http.Request) {
+	logs, err := s.storage.LoadSystemLogs()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to load system logs: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"logs":  logs.Logs,
+		"count": len(logs.Logs),
+	})
+}
+
+// handleClearSystemLogs 清空系统日志
+func (s *Server) handleClearSystemLogs(w http.ResponseWriter, r *http.Request) {
+	if err := s.storage.ClearSystemLogs(); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to clear system logs: "+err.Error())
+		return
+	}
+
+	logger.Info("通过 Web API 清空系统日志")
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "System logs cleared successfully",
+	})
+}

@@ -504,11 +504,53 @@
         }
 
         function loadLogs() {
-            const savedLogs = localStorage.getItem('systemLogs');
-            if (savedLogs) {
-                allLogs = JSON.parse(savedLogs);
-            }
-            renderLogs();
+            // 从 API 获取系统日志
+            apiRequest('/api/system-logs')
+                .then(data => {
+                    const systemLogs = (data.logs || []).map(log => ({
+                        timestamp: new Date(log.timestamp).toLocaleString('zh-CN', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                        }),
+                        message: log.message,
+                        type: log.type,
+                        id: new Date(log.timestamp).getTime(),
+                        source: 'system' // 标记为系统日志
+                    }));
+
+                    // 获取客户端日志
+                    const savedLogs = localStorage.getItem('systemLogs');
+                    const clientLogs = savedLogs ? JSON.parse(savedLogs).map(log => ({
+                        ...log,
+                        source: 'client' // 标记为客户端日志
+                    })) : [];
+
+                    // 合并系统日志和客户端日志
+                    allLogs = [...systemLogs, ...clientLogs];
+
+                    // 按时间排序（最新的在前）
+                    allLogs.sort((a, b) => b.id - a.id);
+
+                    // 限制总日志数
+                    if (allLogs.length > 500) {
+                        allLogs = allLogs.slice(0, 500);
+                    }
+
+                    renderLogs();
+                })
+                .catch(err => {
+                    console.error('加载系统日志失败:', err);
+                    // 如果 API 失败，只显示客户端日志
+                    const savedLogs = localStorage.getItem('systemLogs');
+                    if (savedLogs) {
+                        allLogs = JSON.parse(savedLogs);
+                    }
+                    renderLogs();
+                });
         }
 
         function renderLogs() {
@@ -536,13 +578,17 @@
                 error: '❌'
             };
 
-            container.innerHTML = filteredLogs.map(log => `
-                <div class="hover:bg-gray-800 px-2 py-1 rounded">
-                    <span class="text-gray-500">[${log.timestamp}]</span>
-                    <span class="${typeColors[log.type]}">${typeIcons[log.type]}</span>
-                    <span class="text-gray-300">${log.message}</span>
-                </div>
-            `).join('');
+            container.innerHTML = filteredLogs.map(log => {
+                const sourceLabel = log.source === 'system' ? '<span class="text-purple-400">[系统]</span> ' : '';
+                return `
+                    <div class="hover:bg-gray-800 px-2 py-1 rounded">
+                        <span class="text-gray-500">[${log.timestamp}]</span>
+                        ${sourceLabel}
+                        <span class="${typeColors[log.type]}">${typeIcons[log.type]}</span>
+                        <span class="text-gray-300">${log.message}</span>
+                    </div>
+                `;
+            }).join('');
 
             // 自动滚动到底部
             const logContainer = document.getElementById('log-container');
@@ -800,14 +846,10 @@
                             <div>
                                 <div class="flex justify-between text-sm mb-1">
                                     <span class="text-gray-600">额度使用</span>
-                                    <span class="font-semibold text-gray-800">${creditPercent.toFixed(1)}%</span>
+                                    <span class="font-semibold text-gray-800">${sub.current_credits?.toFixed(2) || 0} / ${sub.credit_limit?.toFixed(2) || 0} (${creditPercent.toFixed(1)}%)</span>
                                 </div>
                                 <div class="w-full bg-gray-200 rounded-full h-2">
                                     <div class="bg-${creditColor}-500 h-2 rounded-full transition-all duration-300" style="width: ${creditPercent}%"></div>
-                                </div>
-                                <div class="flex justify-between text-xs text-gray-600 mt-0.5">
-                                    <span>${sub.current_credits?.toFixed(2) || 0}</span>
-                                    <span>${sub.credit_limit?.toFixed(2) || 0}</span>
                                 </div>
                             </div>
                         ` : `

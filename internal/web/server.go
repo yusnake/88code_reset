@@ -10,6 +10,7 @@ import (
 
 	"code88reset/internal/config"
 	"code88reset/internal/models"
+	"code88reset/internal/storage"
 	"code88reset/internal/token"
 	"code88reset/pkg/logger"
 )
@@ -22,14 +23,16 @@ type Server struct {
 	httpServer   *http.Server
 	tokenManager *token.Manager
 	configMgr    *config.DynamicConfigManager
+	storage      *storage.Storage
 	adminToken   string
 }
 
 // NewServer 创建 Web 服务器
-func NewServer(port int, tokenManager *token.Manager, configMgr *config.DynamicConfigManager, adminToken string) *Server {
+func NewServer(port int, tokenManager *token.Manager, configMgr *config.DynamicConfigManager, storage *storage.Storage, adminToken string) *Server {
 	s := &Server{
 		tokenManager: tokenManager,
 		configMgr:    configMgr,
+		storage:      storage,
 		adminToken:   adminToken,
 	}
 
@@ -51,6 +54,7 @@ func NewServer(port int, tokenManager *token.Manager, configMgr *config.DynamicC
 	mux.HandleFunc("/api/tokens/batch", s.withAuth(s.handleBatchAddTokens))
 	mux.HandleFunc("/api/tokens/", s.withAuth(s.handleTokenDetail))
 	mux.HandleFunc("/api/reset/trigger", s.withAuth(s.handleManualReset))
+	mux.HandleFunc("/api/system-logs", s.withAuth(s.handleSystemLogs))
 
 	// 创建 HTTP 服务器
 	s.httpServer = &http.Server{

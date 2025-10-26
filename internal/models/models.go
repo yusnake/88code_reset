@@ -200,3 +200,15 @@ type Token struct {
 type TokenStorage struct {
 	Tokens []Token `json:"tokens"`
 }
+
+// SystemLog 系统日志
+type SystemLog struct {
+	Timestamp time.Time `json:"timestamp"`
+	Type      string    `json:"type"`    // "info", "success", "warning", "error"
+	Message   string    `json:"message"`
+}
+
+// SystemLogs 系统日志列表
+type SystemLogs struct {
+	Logs []SystemLog `json:"logs"`
+}
