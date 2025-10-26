@@ -53,6 +53,9 @@
 
     <!-- 主管理界面 -->
     <div id="main-app" class="hidden">
+        <!-- 通知容器 -->
+        <div id="notification-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
         <!-- 顶部导航 -->
         <header class="bg-gradient-to-r from-primary to-secondary text-white shadow-lg">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -163,16 +166,10 @@
                         💾 保存配置
                     </button>
                     <button
-                        onclick="manualReset('first')"
-                        class="bg-gradient-to-r from-indigo-500 to-indigo-600 text-white font-semibold px-6 py-3 rounded-lg hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200"
+                        onclick="manualReset()"
+                        class="bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold px-6 py-3 rounded-lg hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200"
                     >
-                        🔄 手动触发第一次重置
-                    </button>
-                    <button
-                        onclick="manualReset('second')"
-                        class="bg-gradient-to-r from-pink-500 to-pink-600 text-white font-semibold px-6 py-3 rounded-lg hover:shadow-lg transform hover:-translate-y-0.5 transition duration-200"
-                    >
-                        🔄 手动触发第二次重置
+                        🔄 手动重置
                     </button>
                 </div>
             </div>
@@ -297,6 +294,47 @@
     <script>
         const API_BASE = '';
         let adminToken = '';
+
+        // 通知系统
+        function showNotification(message, type = 'success') {
+            const container = document.getElementById('notification-container');
+            const notification = document.createElement('div');
+
+            const colors = {
+                success: 'bg-green-500',
+                error: 'bg-red-500',
+                info: 'bg-blue-500',
+                warning: 'bg-orange-500'
+            };
+
+            const icons = {
+                success: '✅',
+                error: '❌',
+                info: 'ℹ️',
+                warning: '⚠️'
+            };
+
+            notification.className = `${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 transform transition-all duration-300 opacity-0 translate-x-4`;
+            notification.innerHTML = `
+                <span class="text-xl">${icons[type]}</span>
+                <span class="font-medium">${message}</span>
+            `;
+
+            container.appendChild(notification);
+
+            // 触发动画
+            setTimeout(() => {
+                notification.classList.remove('opacity-0', 'translate-x-4');
+            }, 10);
+
+            // 3秒后移除
+            setTimeout(() => {
+                notification.classList.add('opacity-0', 'translate-x-4');
+                setTimeout(() => {
+                    container.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
 
         // 登录功能
         function login() {
@@ -514,7 +552,7 @@
                                     ${statusText}
                                 </span>
                             </div>
-                            <div class="flex gap-1.5">
+                            <div class="flex gap-1.5 ml-auto">
                                 <button onclick="refreshToken('${token.id}')" class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition">
                                     🔄 刷新
                                 </button>
@@ -601,7 +639,7 @@
             const apiKey = document.getElementById('new-token-apikey').value.trim();
 
             if (!apiKey) {
-                alert('请输入 API Key');
+                showNotification('请输入 API Key', 'warning');
                 return;
             }
 
@@ -613,7 +651,7 @@
                 closeAddTokenModal();
                 loadTokens();
                 loadStatus();
-                alert('Token 添加成功！');
+                showNotification('Token 添加成功！', 'success');
             })
             .catch(err => {
                 const errorDiv = document.getElementById('add-token-error');
@@ -628,7 +666,7 @@
             const apiKeys = document.getElementById('batch-token-apikeys').value.trim();
 
             if (!apiKeys) {
-                alert('请输入至少一个 API Key');
+                showNotification('请输入至少一个 API Key', 'warning');
                 return;
             }
 
@@ -646,12 +684,7 @@
                 closeBatchAddTokenModal();
                 loadTokens();
                 loadStatus();
-
-                const message = `${data.message}\n\n详细信息:\n` +
-                    data.results.map(r =>
-                        `${r.success ? '✅' : '❌'} ${r.name}: ${r.success ? '成功' : r.error}`
-                    ).join('\n');
-                alert(message);
+                showNotification(`批量添加完成: 成功 ${data.success_count}, 失败 ${data.fail_count}`, 'success');
             })
             .catch(err => {
                 errorDiv.textContent = '批量添加失败: ' + (err.message || '未知错误');
@@ -663,7 +696,10 @@
         // Token 操作
         function refreshToken(tokenId) {
             apiRequest(`/api/tokens/${tokenId}/refresh`, { method: 'PUT' })
-                .then(data => loadTokens())
+                .then(data => {
+                    loadTokens();
+                    showNotification('订阅信息已刷新', 'success');
+                })
                 .catch(err => console.error('刷新失败:', err.message));
         }
 
@@ -677,6 +713,7 @@
             .then(data => {
                 loadTokens();
                 loadStatus();
+                showNotification('重置成功！', 'success');
             })
             .catch(err => console.error('重置失败:', err.message));
         }
@@ -686,6 +723,7 @@
                 .then(data => {
                     loadTokens();
                     loadStatus();
+                    showNotification(data.token.enabled ? 'Token 已启用' : 'Token 已禁用', 'success');
                 })
                 .catch(err => console.error('操作失败:', err.message));
         }
@@ -697,12 +735,29 @@
                 .then(data => {
                     loadTokens();
                     loadStatus();
+                    showNotification('Token 已删除', 'success');
                 })
                 .catch(err => console.error('删除失败:', err.message));
         }
 
-        function manualReset(resetType) {
-            if (!confirm(`确定要手动触发所有启用的 Token 进行${resetType === 'first' ? '第一次' : '第二次'}重置吗？`)) return;
+        function manualReset() {
+            // 获取当前配置，确定使用哪个重置类型
+            const config = {
+                first_reset: {
+                    enabled: document.getElementById('first-enabled').checked,
+                },
+                second_reset: {
+                    enabled: document.getElementById('second-enabled').checked,
+                }
+            };
+
+            // 优先使用第二次重置，如果未启用则使用第一次
+            let resetType = 'second';
+            if (!config.second_reset.enabled && config.first_reset.enabled) {
+                resetType = 'first';
+            }
+
+            if (!confirm(`确定要手动触发所有启用的 Token 进行重置吗？`)) return;
 
             apiRequest('/api/reset/trigger', {
                 method: 'POST',
@@ -711,6 +766,7 @@
             .then(data => {
                 loadTokens();
                 loadStatus();
+                showNotification(`重置完成！成功: ${data.success_count}/${data.total}`, 'success');
             })
             .catch(err => console.error('重置失败:', err.message));
         }
