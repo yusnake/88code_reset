@@ -439,6 +439,7 @@
         let logInterval = null;
         let allLogs = [];
         let currentFilter = 'all';
+        let isTokensLoaded = false; // 标记 Token 是否已加载过
 
         function showPage(pageName) {
             // 更新导航按钮状态
@@ -688,12 +689,16 @@
 
         // 加载 Token 列表
         function loadTokens() {
-            document.getElementById('token-loading').classList.remove('hidden');
+            // 只在首次加载时显示 loading
+            if (!isTokensLoaded) {
+                document.getElementById('token-loading').classList.remove('hidden');
+            }
 
             apiRequest('/api/tokens')
                 .then(data => {
                     document.getElementById('token-loading').classList.add('hidden');
                     renderTokens(data.tokens || []);
+                    isTokensLoaded = true; // 标记已加载
                 })
                 .catch(err => {
                     document.getElementById('token-loading').classList.add('hidden');
