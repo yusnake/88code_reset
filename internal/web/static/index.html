@@ -492,6 +492,9 @@
                 const statusColor = enabled ? 'green' : 'red';
                 const statusText = enabled ? '已启用' : '已禁用';
 
+                // 使用邮箱名作为显示名称
+                const displayName = sub?.employee_email || token.name;
+
                 let creditPercent = 0;
                 let creditColor = 'gray';
                 if (sub && sub.credit_limit > 0) {
@@ -503,68 +506,67 @@
 
                 return `
                     <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-3 border-l-4 border-${statusColor}-500">
-                        <div class="flex flex-col lg:flex-row justify-between gap-3">
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2 mb-2">
-                                    <h3 class="text-lg font-bold text-gray-800">${token.name}</h3>
-                                    <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-${statusColor}-100 text-${statusColor}-700">
-                                        ${statusText}
-                                    </span>
-                                </div>
-
-                                ${sub ? `
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                                        <div class="text-sm">
-                                            <span class="text-gray-600">用户:</span>
-                                            <span class="font-medium text-gray-800">${sub.user_name || '--'}</span>
-                                        </div>
-                                        <div class="text-sm">
-                                            <span class="text-gray-600">邮箱:</span>
-                                            <span class="font-medium text-gray-800">${sub.employee_email || '--'}</span>
-                                        </div>
-                                        <div class="text-sm">
-                                            <span class="text-gray-600">套餐:</span>
-                                            <span class="font-medium text-gray-800">${sub.subscription_name || '--'}</span>
-                                        </div>
-                                        <div class="text-sm">
-                                            <span class="text-gray-600">重置次数:</span>
-                                            <span class="font-medium text-gray-800">${sub.reset_times || 0} / 2</span>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <div class="flex justify-between text-sm mb-1">
-                                            <span class="text-gray-600">额度使用</span>
-                                            <span class="font-semibold text-gray-800">${creditPercent.toFixed(1)}%</span>
-                                        </div>
-                                        <div class="w-full bg-gray-200 rounded-full h-2">
-                                            <div class="bg-${creditColor}-500 h-2 rounded-full transition-all duration-300" style="width: ${creditPercent}%"></div>
-                                        </div>
-                                        <div class="flex justify-between text-xs text-gray-600 mt-0.5">
-                                            <span>${sub.current_credits?.toFixed(2) || 0}</span>
-                                            <span>${sub.credit_limit?.toFixed(2) || 0}</span>
-                                        </div>
-                                    </div>
-                                ` : `
-                                    <div class="text-sm text-gray-500">暂无订阅信息</div>
-                                `}
+                        <!-- 标题和按钮行 -->
+                        <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+                            <div class="flex items-center gap-2">
+                                <h3 class="text-lg font-bold text-gray-800">${displayName}</h3>
+                                <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-${statusColor}-100 text-${statusColor}-700">
+                                    ${statusText}
+                                </span>
                             </div>
-
-                            <div class="flex lg:flex-col gap-1.5 flex-wrap">
-                                <button onclick="refreshToken('${token.id}')" class="flex-1 lg:flex-none px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition">
+                            <div class="flex gap-1.5">
+                                <button onclick="refreshToken('${token.id}')" class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition">
                                     🔄 刷新
                                 </button>
-                                <button onclick="resetToken('${token.id}')" class="flex-1 lg:flex-none px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition">
+                                <button onclick="resetToken('${token.id}')" class="px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition">
                                     🔄 重置
                                 </button>
-                                <button onclick="toggleToken('${token.id}')" class="flex-1 lg:flex-none px-3 py-1.5 bg-${enabled ? 'orange' : 'green'}-500 hover:bg-${enabled ? 'orange' : 'green'}-600 text-white rounded-lg text-sm font-medium transition">
+                                <button onclick="toggleToken('${token.id}')" class="px-3 py-1.5 bg-${enabled ? 'orange' : 'green'}-500 hover:bg-${enabled ? 'orange' : 'green'}-600 text-white rounded-lg text-sm font-medium transition">
                                     ${enabled ? '❌ 禁用' : '✅ 启用'}
                                 </button>
-                                <button onclick="deleteToken('${token.id}', '${token.name}')" class="flex-1 lg:flex-none px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition">
+                                <button onclick="deleteToken('${token.id}', '${displayName}')" class="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition">
                                     🗑️ 删除
                                 </button>
                             </div>
                         </div>
+
+                        <!-- 订阅信息 -->
+                        ${sub ? `
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                                <div class="text-sm">
+                                    <span class="text-gray-600">用户:</span>
+                                    <span class="font-medium text-gray-800">${sub.user_name || '--'}</span>
+                                </div>
+                                <div class="text-sm">
+                                    <span class="text-gray-600">套餐:</span>
+                                    <span class="font-medium text-gray-800">${sub.subscription_name || '--'}</span>
+                                </div>
+                                <div class="text-sm">
+                                    <span class="text-gray-600">备注:</span>
+                                    <span class="font-medium text-gray-800">${token.name}</span>
+                                </div>
+                                <div class="text-sm">
+                                    <span class="text-gray-600">重置次数:</span>
+                                    <span class="font-medium text-gray-800">${sub.reset_times || 0} / 2</span>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-gray-600">额度使用</span>
+                                    <span class="font-semibold text-gray-800">${creditPercent.toFixed(1)}%</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div class="bg-${creditColor}-500 h-2 rounded-full transition-all duration-300" style="width: ${creditPercent}%"></div>
+                                </div>
+                                <div class="flex justify-between text-xs text-gray-600 mt-0.5">
+                                    <span>${sub.current_credits?.toFixed(2) || 0}</span>
+                                    <span>${sub.credit_limit?.toFixed(2) || 0}</span>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="text-sm text-gray-500">暂无订阅信息</div>
+                        `}
                     </div>
                 `;
             }).join('');
