@@ -1,14 +1,16 @@
 version: '3.8'
 
 services:
-  reset-scheduler:
+  reset-web:
     build: .
-    container_name: 88code_reset_scheduler
+    container_name: 88code_reset_web
     restart: unless-stopped
+    ports:
+      # Web 管理界面端口
+      - "8966:8966"
     environment:
-      # 方式1: 直接设置环境变量
-      - API_KEY=${API_KEY}
-      # 或者从 .env 文件自动加载
+      # Web 管理员 Token (请修改为强密码)
+      - WEB_ADMIN_TOKEN=${WEB_ADMIN_TOKEN:-admin123}
     env_file:
       - .env
     volumes:
@@ -16,7 +18,28 @@ services:
       - ./data:/app/data
       # 持久化日志目录
       - ./logs:/app/logs
+    command: ["-mode=web", "-datadir=/app/data", "-logdir=/app/logs"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 可选：传统调度器模式（兼容旧版本）
+  reset-scheduler:
+    build: .
+    container_name: 88code_reset_scheduler
+    restart: unless-stopped
+    environment:
+      - API_KEY=${API_KEY}
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
     command: ["-mode=run", "-datadir=/app/data", "-logdir=/app/logs"]
+    profiles:
+      - legacy
     logging:
       driver: "json-file"
       options:

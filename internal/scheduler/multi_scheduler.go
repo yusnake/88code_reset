@@ -58,7 +58,7 @@ func NewMultiSchedulerWithConfig(storage *storage.Storage, baseURL string, activ
 		creditThresholdMin: thresholdMin,
 		useMaxThreshold:    useMax,
 		enableFirstReset:   enableFirstReset,
-		loop:               newLoopController(SubscriptionCheckInterval),
+		loop:               newLoopController(),
 		accountUpdater:     updater,
 		logAgg:             newLogAggregator("多账号调度器", 5*time.Minute),
 	}, nil
@@ -92,8 +92,7 @@ func (s *MultiScheduler) Start() {
 		logger.Warn("没有活跃的账号，调度器将空转")
 	}
 
-	// 启动时立即检查所有账号的订阅状态
-	s.loop.run(s.checkAllAccountsStatus, s.checkAndExecute)
+	s.loop.run(s.checkAndExecute)
 	s.logAgg.Flush()
 	logger.Info("多账号调度器已停止")
 }
@@ -103,65 +102,6 @@ func (s *MultiScheduler) Stop() {
 	logger.Info("正在停止多账号调度器...")
 	s.loop.Stop()
 	s.logAgg.Flush()
-}
-
-// checkAllAccountsStatus 检查所有活跃账号的订阅状态
-func (s *MultiScheduler) checkAllAccountsStatus() {
-	if len(s.activeAccounts) == 0 {
-		logger.Debug("没有活跃的账号")
-		return
-	}
-
-	logger.Info("开始检查 %d 个账号的订阅状态...", len(s.activeAccounts))
-
-	for i, acc := range s.activeAccounts {
-		logger.Info("[%d/%d] 检查账号: %s (%s)",
-			i+1, len(s.activeAccounts), acc.EmployeeEmail, acc.Name)
-
-		// 创建客户端
-		client := api.NewClient(s.baseURL, acc.APIKey, s.targetPlans)
-		client.Storage = s.storage
-
-		runner := reset.NewRunner(
-			client,
-			reset.Filter{TargetPlans: s.targetPlans, RequireMonthly: true},
-			reset.Options{},
-		)
-		subs, err := runner.Eligible()
-		if err != nil {
-			logger.Warn("账号 %s 无法获取目标订阅: %v", acc.EmployeeEmail, err)
-			continue
-		}
-
-		if len(subs) == 0 {
-			logger.Warn("  账号 %s 未找到符合条件的订阅", acc.EmployeeEmail)
-			continue
-		}
-
-		for i := range subs {
-			sub := &subs[i]
-			s.updateAccountInfo(acc.EmployeeEmail, sub)
-			logger.Info("  订阅[%d]: 名称=%s, 类型=%s, resetTimes=%d, 积分=%.3f/%.3f",
-				i+1,
-				sub.SubscriptionName,
-				sub.SubscriptionPlan.PlanType,
-				sub.ResetTimes,
-				sub.CurrentCredits,
-				sub.SubscriptionPlan.CreditLimit)
-
-			if sub.ResetTimes < 2 {
-				logger.Warn("    账号 %s 的 resetTimes=%d，不足以执行重置",
-					acc.EmployeeEmail, sub.ResetTimes)
-			}
-		}
-	}
-
-	logger.Info("所有账号订阅状态检查完成")
-}
-
-// updateAccountInfo 更新账号信息
-func (s *MultiScheduler) updateAccountInfo(employeeEmail string, sub *models.Subscription) {
-	s.accountUpdater.UpdateByEmail(employeeEmail, sub)
 }
 
 // checkAndExecute 检查并执行重置任务
@@ -354,6 +294,11 @@ func (s *MultiScheduler) executeResetForAccount(acc models.AccountConfig, resetT
 	s.updateResetStatus(employeeEmail, status, resetType, successFlag, lastMessage)
 
 	return successFlag
+}
+
+// updateAccountInfo 更新账号信息
+func (s *MultiScheduler) updateAccountInfo(employeeEmail string, sub *models.Subscription) {
+	s.accountUpdater.UpdateByEmail(employeeEmail, sub)
 }
 
 // updateResetStatus 更新重置状态

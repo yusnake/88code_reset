@@ -24,9 +24,6 @@ const (
 
 	// 最小间隔时间（5小时）
 	MinResetInterval = 5 * time.Hour
-
-	// 订阅状态检查间隔（每 5 分钟检查一次）
-	SubscriptionCheckInterval = 5 * time.Minute
 )
 
 // Scheduler 调度器
@@ -69,7 +66,7 @@ func NewSchedulerWithConfig(apiClient *api.Client, storage *storage.Storage, tim
 		creditThresholdMin: thresholdMin,
 		useMaxThreshold:    useMax,
 		enableFirstReset:   enableFirstReset,
-		loop:               newLoopController(SubscriptionCheckInterval),
+		loop:               newLoopController(),
 		accountUpdater:     newAccountUpdater(storage),
 		logAgg:             newLogAggregator("单账号调度器", 5*time.Minute),
 	}, nil
@@ -96,9 +93,8 @@ func (s *Scheduler) Start() {
 		logger.Info("额度判断模式: 已禁用")
 	}
 
-	logger.Info("订阅状态检查间隔: %v", SubscriptionCheckInterval)
 	logger.Info("========================================")
-	s.loop.run(s.checkSubscriptionStatus, s.checkAndExecute)
+	s.loop.run(s.checkAndExecute)
 	s.logAgg.Flush()
 	logger.Info("调度器已停止")
 }
@@ -108,45 +104,6 @@ func (s *Scheduler) Stop() {
 	logger.Info("正在停止调度器...")
 	s.loop.Stop()
 	s.logAgg.Flush()
-}
-
-// checkSubscriptionStatus 检查并验证目标订阅状态
-func (s *Scheduler) checkSubscriptionStatus() {
-	logger.Debug("检查目标订阅状态...")
-
-	runner := reset.NewRunner(
-		s.apiClient,
-		reset.Filter{TargetPlans: s.apiClient.TargetPlans, RequireMonthly: true},
-		reset.Options{},
-	)
-
-	subs, err := runner.Eligible()
-	if err != nil {
-		logger.Warn("无法获取目标订阅: %v", err)
-		return
-	}
-
-	if len(subs) == 0 {
-		logger.Warn("未找到符合条件的订阅")
-		return
-	}
-
-	logger.Info("订阅状态（共 %d 个）:", len(subs))
-	for i := range subs {
-		sub := &subs[i]
-		s.updateAccountInfo(sub)
-		logger.Info("  [%d] 名称=%s, 类型=%s, resetTimes=%d, 积分=%.3f/%.3f",
-			i+1,
-			sub.SubscriptionName,
-			sub.SubscriptionPlan.PlanType,
-			sub.ResetTimes,
-			sub.CurrentCredits,
-			sub.SubscriptionPlan.CreditLimit)
-
-		if sub.ResetTimes < 2 {
-			logger.Warn("    resetTimes=%d，不足以执行重置（需要 >= 2）", sub.ResetTimes)
-		}
-	}
 }
 
 // checkAndExecute 检查并执行重置任务

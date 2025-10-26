@@ -139,3 +139,64 @@ type LockFile struct {
 	Operation string    `json:"operation"`
 	Hostname  string    `json:"hostname"`
 }
+
+// ResetConfig 重置配置
+type ResetConfig struct {
+	Enabled          bool    `json:"enabled"`
+	Hour             int     `json:"hour"`
+	Minute           int     `json:"minute"`
+	ThresholdPercent float64 `json:"threshold_percent"`
+}
+
+// DynamicConfig 动态配置（可热重载）
+type DynamicConfig struct {
+	FirstReset  ResetConfig `json:"first_reset"`
+	SecondReset ResetConfig `json:"second_reset"`
+	Timezone    string      `json:"timezone"`
+	WebPort     int         `json:"web_port"`
+}
+
+// TokenSubscriptionInfo Token的订阅详情
+type TokenSubscriptionInfo struct {
+	ID                 int     `json:"id"`
+	SubscriptionName   string  `json:"subscription_name"`
+	PlanType           string  `json:"plan_type"`
+	CurrentCredits     float64 `json:"current_credits"`
+	CreditLimit        float64 `json:"credit_limit"`
+	CreditPercent      float64 `json:"credit_percent"`
+	ResetTimes         int     `json:"reset_times"`
+	Status             string  `json:"status"`
+	RemainingDays      int     `json:"remaining_days"`
+	EmployeeName       string  `json:"employee_name"`
+	EmployeeEmail      string  `json:"employee_email"`
+	StartDate          string  `json:"start_date"`
+	EndDate            string  `json:"end_date"`
+	LastCreditReset    *string `json:"last_credit_reset"`
+}
+
+// TokenResetRecord Token的重置记录
+type TokenResetRecord struct {
+	ResetAt       time.Time `json:"reset_at"`
+	ResetType     string    `json:"reset_type"` // "first" or "second"
+	Success       bool      `json:"success"`
+	BeforeCredits float64   `json:"before_credits"`
+	AfterCredits  float64   `json:"after_credits"`
+	Message       string    `json:"message"`
+}
+
+// Token API Token 信息
+type Token struct {
+	ID                    string                 `json:"id"`
+	Name                  string                 `json:"name"`
+	APIKey                string                 `json:"api_key"`
+	Enabled               bool                   `json:"enabled"`
+	AddedAt               time.Time              `json:"added_at"`
+	Subscription          *TokenSubscriptionInfo `json:"subscription,omitempty"`
+	SubscriptionUpdatedAt *time.Time             `json:"subscription_updated_at,omitempty"`
+	LastReset             *TokenResetRecord      `json:"last_reset,omitempty"`
+}
+
+// TokenStorage Token 存储结构
+type TokenStorage struct {
+	Tokens []Token `json:"tokens"`
+}

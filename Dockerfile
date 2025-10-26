@@ -31,9 +31,12 @@ RUN mkdir -p /app/data /app/logs
 # 设置时区为北京时间
 ENV TZ=Asia/Shanghai
 
+# 暴露 Web 管理界面端口
+EXPOSE 8966
+
 # 暴露数据和日志目录
 VOLUME ["/app/data", "/app/logs"]
 
-# 默认运行调度器模式
+# 默认运行 Web 管理模式
 ENTRYPOINT ["./reset"]
-CMD ["-mode=run"]
+CMD ["-mode=web"]

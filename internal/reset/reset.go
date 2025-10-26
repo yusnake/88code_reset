@@ -286,15 +286,18 @@ func (r *Runner) shouldSkipByThreshold(sub models.Subscription) (bool, string) {
 
 	percent := (sub.CurrentCredits / sub.SubscriptionPlan.CreditLimit) * 100
 
-	// 第二次重置：使用 100% 阈值，只要不是满额就重置
+	// 第二次重置：也使用用户配置的阈值（默认100%）
 	if strings.EqualFold(r.opts.ResetType, "second") {
-		if percent >= 100.0 {
-			return true, fmt.Sprintf("额度已满(%.2f%% = 100%%)", percent)
+		// 使用上限模式的阈值（如果设置）
+		if r.opts.UseMaxThreshold && r.opts.CreditThresholdMax > 0 {
+			if percent >= r.opts.CreditThresholdMax {
+				return true, fmt.Sprintf("额度充足(%.2f%% >= %.1f%%)", percent, r.opts.CreditThresholdMax)
+			}
 		}
 		return false, ""
 	}
 
-	// 第一次重置：使用用户配置的阈值
+	// 第一次重置：使用用户配置的阈值（默认70%）
 	if r.opts.UseMaxThreshold && r.opts.CreditThresholdMax > 0 {
 		if percent > r.opts.CreditThresholdMax {
 			return true, fmt.Sprintf("额度充足(%.2f%% > %.1f%%)", percent, r.opts.CreditThresholdMax)

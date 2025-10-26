@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>88code 订阅重置管理后台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 0;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        header h1 {
+            text-align: center;
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .card h2 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+            color: #667eea;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .status-item {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+
+        .status-item label {
+            display: block;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .status-item value {
+            display: block;
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .config-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+
+        .config-group {
+            flex: 1;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+
+        .config-group h3 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #667eea;
+        }
+
+        .form-group {
+            margin-bottom: 10px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            margin-bottom: 5px;
+            color: #555;
+        }
+
+        .form-group input[type="number"],
+        .form-group input[type="text"] {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .form-group input[type="checkbox"] {
+            margin-right: 8px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .token-list {
+            margin-top: 15px;
+        }
+
+        .token-item {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        .token-item.disabled {
+            border-left-color: #dc3545;
+            opacity: 0.7;
+        }
+
+        .token-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .token-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .token-status {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .token-status.enabled {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .token-status.disabled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .token-info {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .token-subscription {
+            background: white;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+
+        .subscription-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .subscription-item {
+            font-size: 13px;
+        }
+
+        .subscription-item strong {
+            color: #667eea;
+        }
+
+        .token-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 30px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+
+        .modal-footer {
+            margin-top: 20px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            border: 1px solid #c3e6cb;
+        }
+
+        .credit-bar {
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+
+        .credit-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            transition: width 0.3s;
+        }
+
+        .credit-fill.warning {
+            background: linear-gradient(90deg, #ffc107, #fd7e14);
+        }
+
+        .credit-fill.danger {
+            background: linear-gradient(90deg, #dc3545, #c82333);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🎯 88code 订阅重置管理后台</h1>
+    </header>
+
+    <div class="container">
+        <!-- 系统状态 -->
+        <div class="card">
+            <h2>📊 系统状态</h2>
+            <div id="status-loading" class="loading">加载中...</div>
+            <div id="status-content" style="display: none;">
+                <div class="status-grid">
+                    <div class="status-item">
+                        <label>当前时间</label>
+                        <value id="current-time">--</value>
+                    </div>
+                    <div class="status-item">
+                        <label>下次重置</label>
+                        <value id="next-reset">--</value>
+                    </div>
+                    <div class="status-item">
+                        <label>Token 总数</label>
+                        <value id="total-tokens">0</value>
+                    </div>
+                    <div class="status-item">
+                        <label>已启用</label>
+                        <value id="enabled-tokens">0</value>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 重置配置 -->
+        <div class="card">
+            <h2>⚙️ 重置配置</h2>
+            <div id="config-error" class="error" style="display: none;"></div>
+            <div id="config-success" class="success" style="display: none;"></div>
+            <div class="config-row">
+                <div class="config-group">
+                    <h3>第一次重置 (18:50)</h3>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="first-enabled"> 启用第一次重置
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>阈值百分比 (%)</label>
+                        <input type="number" id="first-threshold" min="0" max="100" value="70">
+                        <small style="color: #666; font-size: 12px;">积分低于此值才重置</small>
+                    </div>
+                    <button class="btn btn-success btn-small" onclick="manualReset('first')">🚀 手动触发第一次重置</button>
+                </div>
+                <div class="config-group">
+                    <h3>第二次重置 (23:55)</h3>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="second-enabled"> 启用第二次重置
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>阈值百分比 (%)</label>
+                        <input type="number" id="second-threshold" min="0" max="100" value="100">
+                        <small style="color: #666; font-size: 12px;">积分低于此值才重置</small>
+                    </div>
+                    <button class="btn btn-success btn-small" onclick="manualReset('second')">🚀 手动触发第二次重置</button>
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="saveConfig()">💾 保存配置</button>
+        </div>
+
+        <!-- Token 管理 -->
+        <div class="card">
+            <h2>🔑 Token 管理</h2>
+            <button class="btn btn-primary" onclick="showAddTokenModal()">➕ 添加新 Token</button>
+            <div id="token-loading" class="loading">加载中...</div>
+            <div id="token-list" class="token-list"></div>
+        </div>
+    </div>
+
+    <!-- 添加 Token 模态框 -->
+    <div id="add-token-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">添加新 Token</div>
+            <div id="add-token-error" class="error" style="display: none;"></div>
+            <div class="form-group">
+                <label>Token 名称</label>
+                <input type="text" id="new-token-name" placeholder="例如: 账号A">
+            </div>
+            <div class="form-group">
+                <label>API Key</label>
+                <input type="text" id="new-token-apikey" placeholder="sk-ant-...">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAddTokenModal()">取消</button>
+                <button class="btn btn-primary" onclick="addToken()">添加</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let adminToken = '';
+
+        // 页面加载时初始化
+        window.onload = function() {
+            adminToken = prompt('请输入管理员Token:', localStorage.getItem('adminToken') || '');
+            if (!adminToken) {
+                alert('未提供管理员Token');
+                return;
+            }
+            localStorage.setItem('adminToken', adminToken);
+
+            loadStatus();
+            loadConfig();
+            loadTokens();
+
+            // 每30秒刷新一次状态
+            setInterval(loadStatus, 30000);
+        };
+
+        function apiRequest(url, options = {}) {
+            options.headers = options.headers || {};
+            options.headers['Authorization'] = 'Bearer ' + adminToken;
+            options.headers['Content-Type'] = 'application/json';
+
+            return fetch(API_BASE + url, options)
+                .then(res => {
+                    if (res.status === 401) {
+                        alert('认证失败，请刷新页面重新输入Token');
+                        throw new Error('Unauthorized');
+                    }
+                    return res.json();
+                });
+        }
+
+        function loadStatus() {
+            apiRequest('/api/status')
+                .then(data => {
+                    document.getElementById('status-loading').style.display = 'none';
+                    document.getElementById('status-content').style.display = 'block';
+
+                    const currentTime = new Date(data.current_time);
+                    document.getElementById('current-time').textContent = currentTime.toLocaleString('zh-CN');
+
+                    const nextReset = new Date(data.next_reset_time);
+                    const resetType = data.next_reset_type === 'first' ? '第一次' : '第二次';
+                    document.getElementById('next-reset').textContent = nextReset.toLocaleString('zh-CN') + ' (' + resetType + ')';
+
+                    document.getElementById('total-tokens').textContent = data.total_tokens;
+                    document.getElementById('enabled-tokens').textContent = data.enabled_tokens;
+                })
+                .catch(err => {
+                    console.error('Failed to load status:', err);
+                });
+        }
+
+        function loadConfig() {
+            apiRequest('/api/config')
+                .then(data => {
+                    document.getElementById('first-enabled').checked = data.first_reset.enabled;
+                    document.getElementById('first-threshold').value = data.first_reset.threshold_percent;
+                    document.getElementById('second-enabled').checked = data.second_reset.enabled;
+                    document.getElementById('second-threshold').value = data.second_reset.threshold_percent;
+                })
+                .catch(err => {
+                    console.error('Failed to load config:', err);
+                });
+        }
+
+        function saveConfig() {
+            const config = {
+                first_reset: {
+                    enabled: document.getElementById('first-enabled').checked,
+                    hour: 18,
+                    minute: 50,
+                    threshold_percent: parseFloat(document.getElementById('first-threshold').value)
+                },
+                second_reset: {
+                    enabled: document.getElementById('second-enabled').checked,
+                    hour: 23,
+                    minute: 55,
+                    threshold_percent: parseFloat(document.getElementById('second-threshold').value)
+                },
+                timezone: 'Asia/Shanghai',
+                web_port: 8966
+            };
+
+            apiRequest('/api/config', {
+                method: 'PUT',
+                body: JSON.stringify(config)
+            })
+            .then(data => {
+                const successDiv = document.getElementById('config-success');
+                successDiv.textContent = '配置保存成功！';
+                successDiv.style.display = 'block';
+                setTimeout(() => successDiv.style.display = 'none', 3000);
+            })
+            .catch(err => {
+                const errorDiv = document.getElementById('config-error');
+                errorDiv.textContent = '配置保存失败: ' + err.message;
+                errorDiv.style.display = 'block';
+            });
+        }
+
+        function loadTokens() {
+            document.getElementById('token-loading').style.display = 'block';
+            apiRequest('/api/tokens')
+                .then(data => {
+                    document.getElementById('token-loading').style.display = 'none';
+                    renderTokens(data.tokens || []);
+                })
+                .catch(err => {
+                    document.getElementById('token-loading').style.display = 'none';
+                    console.error('Failed to load tokens:', err);
+                });
+        }
+
+        function renderTokens(tokens) {
+            const container = document.getElementById('token-list');
+            if (tokens.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">暂无 Token</p>';
+                return;
+            }
+
+            container.innerHTML = tokens.map(token => {
+                const sub = token.subscription;
+                const percent = sub ? sub.credit_percent : 0;
+                let barClass = '';
+                if (percent < 30) barClass = 'danger';
+                else if (percent < 70) barClass = 'warning';
+
+                return `
+                    <div class="token-item ${token.enabled ? '' : 'disabled'}">
+                        <div class="token-header">
+                            <div>
+                                <div class="token-name">${token.name}</div>
+                                <div class="token-info">🔑 ${token.api_key.substring(0, 12)}****</div>
+                            </div>
+                            <span class="token-status ${token.enabled ? 'enabled' : 'disabled'}">
+                                ${token.enabled ? '✅ 启用' : '❌ 禁用'}
+                            </span>
+                        </div>
+                        ${sub ? `
+                            <div class="token-subscription">
+                                <div class="token-info">👤 ${sub.employee_name} (${sub.employee_email})</div>
+                                <div class="subscription-grid">
+                                    <div class="subscription-item">
+                                        <strong>订阅:</strong> ${sub.subscription_name}
+                                    </div>
+                                    <div class="subscription-item">
+                                        <strong>类型:</strong> ${sub.plan_type}
+                                    </div>
+                                    <div class="subscription-item">
+                                        <strong>积分:</strong> ${sub.current_credits.toFixed(2)}/${sub.credit_limit}
+                                    </div>
+                                    <div class="subscription-item">
+                                        <strong>resetTimes:</strong> ${sub.reset_times}
+                                    </div>
+                                    <div class="subscription-item">
+                                        <strong>状态:</strong> ${sub.status}
+                                    </div>
+                                    <div class="subscription-item">
+                                        <strong>剩余天数:</strong> ${sub.remaining_days}天
+                                    </div>
+                                </div>
+                                <div class="credit-bar">
+                                    <div class="credit-fill ${barClass}" style="width: ${percent}%"></div>
+                                </div>
+                                <small style="color: #666;">积分使用率: ${percent.toFixed(1)}%</small>
+                            </div>
+                        ` : '<p style="color: #999;">订阅信息未加载</p>'}
+                        <div class="token-actions">
+                            <button class="btn btn-primary btn-small" onclick="refreshToken('${token.id}')">🔄 刷新</button>
+                            <button class="btn btn-success btn-small" onclick="resetToken('${token.id}')">🚀 重置</button>
+                            <button class="btn btn-secondary btn-small" onclick="toggleToken('${token.id}')">${token.enabled ? '禁用' : '启用'}</button>
+                            <button class="btn btn-danger btn-small" onclick="deleteToken('${token.id}', '${token.name}')">🗑️ 删除</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showAddTokenModal() {
+            document.getElementById('add-token-modal').style.display = 'block';
+            document.getElementById('add-token-error').style.display = 'none';
+            document.getElementById('new-token-name').value = '';
+            document.getElementById('new-token-apikey').value = '';
+        }
+
+        function closeAddTokenModal() {
+            document.getElementById('add-token-modal').style.display = 'none';
+        }
+
+        function addToken() {
+            const name = document.getElementById('new-token-name').value.trim();
+            const apiKey = document.getElementById('new-token-apikey').value.trim();
+
+            if (!apiKey) {
+                alert('请输入 API Key');
+                return;
+            }
+
+            apiRequest('/api/tokens', {
+                method: 'POST',
+                body: JSON.stringify({ name: name || undefined, api_key: apiKey })
+            })
+            .then(data => {
+                closeAddTokenModal();
+                loadTokens();
+                loadStatus();
+                alert('Token 添加成功！');
+            })
+            .catch(err => {
+                const errorDiv = document.getElementById('add-token-error');
+                errorDiv.textContent = '添加失败: ' + (err.message || '未知错误');
+                errorDiv.style.display = 'block';
+            });
+        }
+
+        function refreshToken(tokenId) {
+            apiRequest(`/api/tokens/${tokenId}/refresh`, { method: 'PUT' })
+                .then(data => {
+                    loadTokens();
+                    alert('订阅信息已刷新');
+                })
+                .catch(err => alert('刷新失败: ' + err.message));
+        }
+
+        function resetToken(tokenId) {
+            if (!confirm('确定要重置此 Token 的订阅吗？')) return;
+
+            apiRequest(`/api/tokens/${tokenId}/reset`, {
+                method: 'PUT',
+                body: JSON.stringify({ reset_type: 'second' })
+            })
+            .then(data => {
+                loadTokens();
+                loadStatus();
+                alert('重置成功！');
+            })
+            .catch(err => alert('重置失败: ' + err.message));
+        }
+
+        function toggleToken(tokenId) {
+            apiRequest(`/api/tokens/${tokenId}/toggle`, { method: 'PUT' })
+                .then(data => {
+                    loadTokens();
+                    loadStatus();
+                })
+                .catch(err => alert('操作失败: ' + err.message));
+        }
+
+        function deleteToken(tokenId, name) {
+            if (!confirm(`确定要删除 Token "${name}" 吗？此操作不可恢复！`)) return;
+
+            apiRequest(`/api/tokens/${tokenId}`, { method: 'DELETE' })
+                .then(data => {
+                    loadTokens();
+                    loadStatus();
+                    alert('Token 已删除');
+                })
+                .catch(err => alert('删除失败: ' + err.message));
+        }
+
+        function manualReset(resetType) {
+            if (!confirm(`确定要手动触发所有启用的 Token 进行${resetType === 'first' ? '第一次' : '第二次'}重置吗？`)) return;
+
+            apiRequest('/api/reset/trigger', {
+                method: 'POST',
+                body: JSON.stringify({ reset_type: resetType })
+            })
+            .then(data => {
+                loadTokens();
+                loadStatus();
+                alert(`重置完成！成功: ${data.success_count}/${data.total}`);
+            })
+            .catch(err => alert('重置失败: ' + err.message));
+        }
+
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('add-token-modal');
+            if (event.target == modal) {
+                closeAddTokenModal();
+            }
+        };
+    </script>
+</body>
+</html>
