@@ -57,3 +57,6 @@ test_*.go
 *_EXPLAINED.md
 *_ANALYSIS.md
 *_GUIDE.md
+
+.iflow/
+gha-creds-*.json
