@@ -22,6 +22,7 @@ type Manager struct {
 // SystemStorage 系统存储接口
 type SystemStorage interface {
 	AddSystemLog(logType, message string) error
+	SaveAPIResponse(endpoint, method string, requestBody, responseBody []byte, statusCode int) error
 }
 
 // NewManager 创建 Token 管理器
