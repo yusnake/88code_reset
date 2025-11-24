@@ -305,6 +305,16 @@
                             <span class="text-sm font-semibold text-green-700">运行中</span>
                         </div>
 
+                        <!-- 刷新按钮 -->
+                        <button
+                            onclick="refreshAll()"
+                            class="px-5 py-2.5 bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 text-blue-700 rounded-xl transition-all duration-200 font-semibold hover-scale flex items-center gap-2 border border-blue-200"
+                            title="刷新所有数据"
+                        >
+                            <i class="fas fa-sync-alt"></i>
+                            <span class="hidden sm:inline">刷新</span>
+                        </button>
+
                         <!-- 退出按钮 -->
                         <button
                             onclick="logout()"
@@ -953,7 +963,7 @@
 
         function loadLogs() {
             // 从 API 获取系统日志
-            apiRequest('/api/system-logs')
+            return apiRequest('/api/system-logs')
                 .then(data => {
                     const systemLogs = (data.logs || []).map(log => ({
                         timestamp: new Date(log.timestamp).toLocaleString('zh-CN', {
@@ -1063,12 +1073,40 @@
             showNotification('日志已清空', 'success');
         }
 
+        // 整体刷新所有数据
+        function refreshAll() {
+            console.log('🔄 开始刷新所有数据...');
+
+            // 添加旋转动画
+            const refreshBtn = event.target.closest('button');
+            const icon = refreshBtn.querySelector('i');
+            icon.classList.add('fa-spin');
+
+            // 执行刷新
+            Promise.all([
+                loadVersion(),
+                loadStatus(),
+                loadConfig(),
+                loadTokens(),
+                loadLogs()
+            ]).then(() => {
+                icon.classList.remove('fa-spin');
+                showNotification('数据已刷新', 'success');
+            }).catch(err => {
+                icon.classList.remove('fa-spin');
+                showNotification('刷新失败: ' + err.message, 'error');
+                console.error('刷新失败:', err);
+            });
+        }
+
         // 初始化应用
         function initApp() {
+            console.log('⚡ 初始化应用...');
             loadVersion();
             loadStatus();
             loadConfig();
             loadTokens();
+            loadLogs();
             setInterval(loadStatus, 30000);
         }
 
@@ -1124,7 +1162,7 @@
 
         // 加载版本号
         function loadVersion() {
-            apiRequest('/api/version')
+            return apiRequest('/api/version')
                 .then(data => {
                     if (data.version) {
                         document.getElementById('header-version').textContent = data.version;
@@ -1138,7 +1176,7 @@
 
         // 加载系统状态
         function loadStatus() {
-            apiRequest('/api/status')
+            return apiRequest('/api/status')
                 .then(data => {
                     document.getElementById('status-loading').classList.add('hidden');
                     document.getElementById('status-content').classList.remove('hidden');
@@ -1157,7 +1195,7 @@
 
         // 加载配置
         function loadConfig() {
-            apiRequest('/api/config')
+            return apiRequest('/api/config')
                 .then(data => {
                     document.getElementById('first-enabled').checked = data.first_reset.enabled;
                     document.getElementById('first-threshold').value = data.first_reset.threshold_percent;
@@ -1213,7 +1251,7 @@
                 document.getElementById('token-loading').classList.remove('hidden');
             }
 
-            apiRequest('/api/tokens')
+            return apiRequest('/api/tokens')
                 .then(data => {
                     document.getElementById('token-loading').classList.add('hidden');
                     renderTokens(data.tokens || []);
