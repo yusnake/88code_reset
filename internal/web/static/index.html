@@ -940,16 +940,16 @@
                 second: '2-digit'
             });
 
-            allLogs.unshift({
+            allLogs.push({
                 timestamp,
                 message,
                 type,
                 id: Date.now()
             });
 
-            // 保留最近 500 条日志
+            // 保留最近 500 条日志（删除最旧的）
             if (allLogs.length > 500) {
-                allLogs = allLogs.slice(0, 500);
+                allLogs = allLogs.slice(-500);
             }
 
             // 保存到 localStorage
@@ -990,12 +990,12 @@
                     // 合并系统日志和客户端日志
                     allLogs = [...systemLogs, ...clientLogs];
 
-                    // 按时间排序（最新的在前）
-                    allLogs.sort((a, b) => b.id - a.id);
+                    // 按时间排序（最旧的在前，最新的在后）
+                    allLogs.sort((a, b) => a.id - b.id);
 
-                    // 限制总日志数
+                    // 限制总日志数（保留最新的500条）
                     if (allLogs.length > 500) {
-                        allLogs = allLogs.slice(0, 500);
+                        allLogs = allLogs.slice(-500);
                     }
 
                     renderLogs();
