@@ -814,6 +814,9 @@
         const API_BASE = '';
         let adminToken = '';
 
+        // Token 错误状态跟踪
+        const tokenErrorState = {}; // { tokenId: { hasError: true, errorMessage: '...', errorTime: timestamp } }
+
         // 通知系统
         function showNotification(message, type = 'success') {
             const container = document.getElementById('notification-container');
@@ -1295,8 +1298,23 @@
             container.innerHTML = sortedTokens.map(token => {
                 const sub = token.subscription;
                 const enabled = token.enabled;
-                const statusColor = enabled ? 'emerald' : 'red';
-                const statusText = enabled ? '已启用' : '已禁用';
+                const errorState = tokenErrorState[token.id];
+
+                // 根据错误状态、启用状态决定颜色
+                let statusColor, statusText, statusIcon;
+                if (errorState?.hasError) {
+                    statusColor = 'orange';
+                    statusText = '刷新失败';
+                    statusIcon = 'exclamation-triangle';
+                } else if (enabled) {
+                    statusColor = 'emerald';
+                    statusText = '已启用';
+                    statusIcon = 'check';
+                } else {
+                    statusColor = 'red';
+                    statusText = '已禁用';
+                    statusIcon = 'times';
+                }
 
                 // 使用邮箱名作为显示名称
                 const displayName = sub?.employee_email || token.name;
@@ -1316,7 +1334,7 @@
                         <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
                             <div class="flex items-center gap-3">
                                 <div class="w-10 h-10 bg-${statusColor}-500 rounded-xl flex items-center justify-center">
-                                    <i class="fas fa-${enabled ? 'check' : 'times'} text-white"></i>
+                                    <i class="fas fa-${statusIcon} text-white"></i>
                                 </div>
                                 <div>
                                     <div class="flex items-center gap-2">
@@ -1338,6 +1356,16 @@
                                     <div id="apikey-${token.id}" class="hidden mt-2 bg-gray-800 text-gray-100 px-3 py-2 rounded-lg font-mono text-xs break-all">
                                         ${token.api_key || 'N/A'}
                                     </div>
+                                    ${errorState?.hasError ? `
+                                        <div class="mt-2 bg-orange-50 border border-orange-200 text-orange-800 px-3 py-2 rounded-lg text-xs flex items-start gap-2">
+                                            <i class="fas fa-exclamation-circle mt-0.5"></i>
+                                            <div>
+                                                <div class="font-semibold">刷新失败</div>
+                                                <div class="text-orange-600 mt-1">${errorState.errorMessage}</div>
+                                                <div class="text-orange-500 mt-1 text-xs">请检查 Token 是否有效或重试刷新</div>
+                                            </div>
+                                        </div>
+                                    ` : ''}
                                 </div>
                             </div>
                             <div class="flex gap-2 ml-auto">
@@ -1540,6 +1568,10 @@
             apiRequest(requestUrl, { method: requestMethod })
                 .then(data => {
                     addLog(`🟢 API响应: ${JSON.stringify(data)}`, 'success');
+
+                    // 清除错误状态
+                    delete tokenErrorState[tokenId];
+
                     loadTokens();
                     addLog(`Token 刷新成功: ${getTokenDisplayName(data.token)}`, 'success');
                     showNotification('订阅信息已刷新', 'success');
@@ -1547,6 +1579,15 @@
                 .catch(err => {
                     addLog(`🔴 API错误: ${err.message}`, 'error');
                     addLog(`Token 刷新失败: ${tokenId} - ${err.message}`, 'error');
+
+                    // 标记错误状态
+                    tokenErrorState[tokenId] = {
+                        hasError: true,
+                        errorMessage: err.message,
+                        errorTime: Date.now()
+                    };
+
+                    loadTokens();
                     showNotification('刷新失败: ' + err.message, 'error');
                 });
         }
@@ -1585,11 +1626,23 @@
                                 .then(data => {
                                     addLog(`🟢 [批量刷新 ${index + 1}/${enabledTokens.length}] API响应: ${JSON.stringify(data)}`, 'success');
                                     addLog(`Token 刷新成功: ${getTokenDisplayName(token)}`, 'success');
+
+                                    // 清除错误状态
+                                    delete tokenErrorState[token.id];
+
                                     successCount++;
                                 })
                                 .catch(err => {
                                     addLog(`🔴 [批量刷新 ${index + 1}/${enabledTokens.length}] API错误: ${err.message}`, 'error');
                                     addLog(`Token 刷新失败: ${getTokenDisplayName(token)} - ${err.message}`, 'error');
+
+                                    // 标记错误状态
+                                    tokenErrorState[token.id] = {
+                                        hasError: true,
+                                        errorMessage: err.message,
+                                        errorTime: Date.now()
+                                    };
+
                                     failCount++;
                                 })
                                 .finally(() => {
@@ -1620,6 +1673,9 @@
                 body: JSON.stringify({ reset_type: 'second' })
             })
             .then(data => {
+                // 清除错误状态
+                delete tokenErrorState[tokenId];
+
                 loadTokens();
                 loadStatus();
                 addLog(`Token 重置成功: ${getTokenDisplayName(data.token)}`, 'success');
