@@ -1085,6 +1085,12 @@
             const icon = refreshBtn.querySelector('i');
             icon.classList.add('fa-spin');
 
+            // 清空错误状态，让所有 token 重新显示为正常状态
+            Object.keys(tokenErrorState).forEach(key => delete tokenErrorState[key]);
+
+            // 强制显示 loading 状态
+            isTokensLoaded = false;
+
             // 执行刷新
             Promise.all([
                 loadVersion(),
@@ -1256,13 +1262,14 @@
 
             return apiRequest('/api/tokens')
                 .then(data => {
+                    console.log('✅ Token 数据已加载:', data.tokens?.length || 0, '个');
                     document.getElementById('token-loading').classList.add('hidden');
                     renderTokens(data.tokens || []);
                     isTokensLoaded = true; // 标记已加载
                 })
                 .catch(err => {
+                    console.error('❌ 加载 Token 失败:', err);
                     document.getElementById('token-loading').classList.add('hidden');
-                    console.error('加载 Token 失败:', err);
                 });
         }
 
@@ -1273,9 +1280,11 @@
 
         // 渲染 Token 列表
         function renderTokens(tokens) {
+            console.log('🎨 开始渲染 Token 列表:', tokens.length, '个');
             const container = document.getElementById('token-list');
 
             if (tokens.length === 0) {
+                console.log('📭 Token 列表为空');
                 container.innerHTML = `
                     <div class="text-center py-16 text-gray-500">
                         <div class="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1444,6 +1453,8 @@
                     </div>
                 `;
             }).join('');
+
+            console.log('✅ Token 列表渲染完成');
         }
 
         // 模态框控制
