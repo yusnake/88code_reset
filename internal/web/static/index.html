@@ -1085,8 +1085,8 @@
             const icon = refreshBtn.querySelector('i');
             icon.classList.add('fa-spin');
 
-            // 清空错误状态，让所有 token 重新显示为正常状态
-            Object.keys(tokenErrorState).forEach(key => delete tokenErrorState[key]);
+            // 注意：不清空 tokenErrorState，保持错误状态显示
+            // 只有在真正调用 refreshToken() 或 refreshAllTokens() 成功后才清空
 
             // 强制显示 loading 状态
             isTokensLoaded = false;
