@@ -25,15 +25,17 @@ type Server struct {
 	configMgr    *config.DynamicConfigManager
 	storage      *storage.Storage
 	adminToken   string
+	version      string
 }
 
 // NewServer 创建 Web 服务器
-func NewServer(port int, tokenManager *token.Manager, configMgr *config.DynamicConfigManager, storage *storage.Storage, adminToken string) *Server {
+func NewServer(port int, tokenManager *token.Manager, configMgr *config.DynamicConfigManager, storage *storage.Storage, adminToken string, version string) *Server {
 	s := &Server{
 		tokenManager: tokenManager,
 		configMgr:    configMgr,
 		storage:      storage,
 		adminToken:   adminToken,
+		version:      version,
 	}
 
 	// 创建路由
@@ -48,6 +50,7 @@ func NewServer(port int, tokenManager *token.Manager, configMgr *config.DynamicC
 
 	// API 路由
 	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/api/status", s.withAuth(s.handleGetStatus))
 	mux.HandleFunc("/api/config", s.withAuth(s.handleConfig))
 	mux.HandleFunc("/api/tokens", s.withAuth(s.handleTokens))
@@ -93,6 +96,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"status": "ok",
 		"time":   time.Now().Format(time.RFC3339),
+	})
+}
+
+// handleVersion 获取版本号
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"version": s.version,
 	})
 }
 

@@ -245,7 +245,7 @@
             <!-- 版本信息 -->
             <div class="mt-6 text-center">
                 <p class="text-white/70 text-sm font-medium">
-                    88code Reset v1.6.0
+                    88code Reset <span id="login-version">v1.6.1</span>
                 </p>
             </div>
         </div>
@@ -268,7 +268,10 @@
                                 <i class="fas fa-rocket text-white text-lg"></i>
                             </div>
                             <div>
-                                <h1 class="text-xl font-bold gradient-text leading-tight">88code</h1>
+                                <div class="flex items-center gap-2">
+                                    <h1 class="text-xl font-bold gradient-text leading-tight">88code</h1>
+                                    <span id="header-version" class="text-xs text-gray-400 font-medium px-2 py-0.5 bg-gray-100 rounded-md">加载中...</span>
+                                </div>
                                 <p class="text-xs text-gray-500 font-medium">订阅重置管理</p>
                             </div>
                         </div>
@@ -1062,6 +1065,7 @@
 
         // 初始化应用
         function initApp() {
+            loadVersion();
             loadStatus();
             loadConfig();
             loadTokens();
@@ -1070,6 +1074,16 @@
 
         // 页面加载时检查登录状态
         window.onload = function() {
+            // 加载登录页面版本号
+            fetch('/api/version')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.version) {
+                        document.getElementById('login-version').textContent = data.version;
+                    }
+                })
+                .catch(err => console.error('加载版本号失败:', err));
+
             const savedToken = localStorage.getItem('adminToken');
             if (savedToken) {
                 adminToken = savedToken;
@@ -1106,6 +1120,20 @@
                 }
                 return response.json();
             });
+        }
+
+        // 加载版本号
+        function loadVersion() {
+            apiRequest('/api/version')
+                .then(data => {
+                    if (data.version) {
+                        document.getElementById('header-version').textContent = data.version;
+                    }
+                })
+                .catch(err => {
+                    console.error('加载版本号失败:', err);
+                    document.getElementById('header-version').textContent = 'v1.6.1';
+                });
         }
 
         // 加载系统状态

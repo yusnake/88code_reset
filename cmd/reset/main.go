@@ -21,6 +21,10 @@ import (
 	"code88reset/pkg/logger"
 )
 
+const (
+	Version = "v1.6.1" // 应用版本号
+)
+
 var (
 	mode               = flag.String("mode", "web", "运行模式: web(Web管理模式), test(测试), run(自动调度器), list(列出历史账号)")
 	apiKey             = flag.String("apikey", "", "API Key，支持单个或多个（逗号分隔），仅在run/test模式使用")
@@ -102,7 +106,7 @@ func runWebMode(store *storage.Storage) {
 		fmt.Sscanf(envPort, "%d", &port)
 	}
 
-	webServer := web.NewServer(port, tokenMgr, configMgr, store, adminToken)
+	webServer := web.NewServer(port, tokenMgr, configMgr, store, adminToken, Version)
 
 	// 启动 Web 服务器（在 goroutine 中）
 	go func() {
