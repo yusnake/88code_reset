@@ -58,6 +58,7 @@ func (m *Manager) SyncAccountsFromAPIKeys(apiKeys []string, targetPlans []string
 
 		// 创建临时客户端获取账号信息
 		client := api.NewClient(m.baseURL, apiKey, targetPlans)
+		client.Storage = m.storage
 		accountConfig, err := client.GetAccountInfo()
 		if err != nil {
 			logger.Error("获取账号信息失败: %v", err)

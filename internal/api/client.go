@@ -21,7 +21,8 @@ type Client struct {
 	TargetPlans []string // 目标订阅计划名称列表
 	Storage     interface {
 		SaveAPIResponse(endpoint, method string, requestBody, responseBody []byte, statusCode int) error
-	} // 存储接口，用于保存响应
+		AddSystemLog(logType, message string) error
+	} // 存储接口，用于保存响应和系统日志
 }
 
 // NewClient 创建新的 API 客户端
@@ -104,17 +105,31 @@ func (c *Client) makeRequest(method, endpoint string, body interface{}) ([]byte,
 func (c *Client) GetUsage() (*models.UsageResponse, error) {
 	logger.Info("获取用量信息...")
 
+	// 记录 API 调用日志
+	if c.Storage != nil {
+		c.Storage.AddSystemLog("info", "调用 88code API: 获取用量信息")
+	}
+
 	respBody, err := c.makeRequest("POST", "/api/usage", nil)
 	if err != nil {
+		if c.Storage != nil {
+			c.Storage.AddSystemLog("error", fmt.Sprintf("88code API 调用失败: 获取用量信息 - %v", err))
+		}
 		return nil, err
 	}
 
 	var usage models.UsageResponse
 	if err := json.Unmarshal(respBody, &usage); err != nil {
+		if c.Storage != nil {
+			c.Storage.AddSystemLog("error", fmt.Sprintf("88code API 响应解析失败: 用量信息 - %v", err))
+		}
 		return nil, fmt.Errorf("解析用量响应失败: %w", err)
 	}
 
 	logger.Info("用量信息获取成功: 当前积分=%.4f, 限制=%.2f", usage.CurrentCredits, usage.CreditLimit)
+	if c.Storage != nil {
+		c.Storage.AddSystemLog("success", fmt.Sprintf("88code API 调用成功: 获取用量信息 (积分=%.4f/%.2f)", usage.CurrentCredits, usage.CreditLimit))
+	}
 	return &usage, nil
 }
 
@@ -122,9 +137,17 @@ func (c *Client) GetUsage() (*models.UsageResponse, error) {
 func (c *Client) GetSubscriptions() ([]models.Subscription, error) {
 	logger.Info("获取订阅列表...")
 
+	// 记录 API 调用日志
+	if c.Storage != nil {
+		c.Storage.AddSystemLog("info", "调用 88code API: 获取订阅列表")
+	}
+
 	// 使用管理后台 API 端点
 	respBody, err := c.makeRequest("GET", "/admin-api/cc-admin/system/subscription/my", nil)
 	if err != nil {
+		if c.Storage != nil {
+			c.Storage.AddSystemLog("error", fmt.Sprintf("88code API 调用失败: 获取订阅列表 - %v", err))
+		}
 		return nil, err
 	}
 
@@ -138,15 +161,24 @@ func (c *Client) GetSubscriptions() ([]models.Subscription, error) {
 	}
 
 	if err := json.Unmarshal(respBody, &adminResp); err != nil {
+		if c.Storage != nil {
+			c.Storage.AddSystemLog("error", fmt.Sprintf("88code API 响应解析失败: %v", err))
+		}
 		return nil, fmt.Errorf("解析订阅列表失败: %w", err)
 	}
 
 	// 检查响应是否成功
 	if !adminResp.OK {
+		if c.Storage != nil {
+			c.Storage.AddSystemLog("error", fmt.Sprintf("88code API 返回错误: %s (错误码: %d)", adminResp.Msg, adminResp.Code))
+		}
 		return nil, fmt.Errorf("获取订阅列表失败: %s (错误码: %d)", adminResp.Msg, adminResp.Code)
 	}
 
 	logger.Info("订阅列表获取成功，共 %d 个订阅", len(adminResp.Data))
+	if c.Storage != nil {
+		c.Storage.AddSystemLog("success", fmt.Sprintf("88code API 调用成功: 获取到 %d 个订阅", len(adminResp.Data)))
+	}
 	return adminResp.Data, nil
 }
 
@@ -214,8 +246,12 @@ func (c *Client) ResetCredits(subscriptionID int) (*models.ResetResponse, error)
 					sub.SubscriptionPlan.PlanType == "PAY_PER_USE"
 
 				if isPAYGO {
-					return nil, fmt.Errorf("🚨 拒绝重置：订阅 ID=%d (名称=%s, 类型=%s) 为 PAYGO 类型，不允许重置",
+					errMsg := fmt.Sprintf("🚨 拒绝重置：订阅 ID=%d (名称=%s, 类型=%s) 为 PAYGO 类型，不允许重置",
 						subscriptionID, sub.SubscriptionName, sub.SubscriptionPlan.PlanType)
+					if c.Storage != nil {
+						c.Storage.AddSystemLog("error", errMsg)
+					}
+					return nil, fmt.Errorf(errMsg)
 				}
 				logger.Debug("已验证订阅 ID=%d 类型=%s，允许重置", subscriptionID, sub.SubscriptionPlan.PlanType)
 				break
@@ -226,8 +262,16 @@ func (c *Client) ResetCredits(subscriptionID int) (*models.ResetResponse, error)
 	endpoint := fmt.Sprintf("/admin-api/cc-admin/system/subscription/my/reset-credits/%d", subscriptionID)
 	logger.Info("重置订阅积分: subscriptionID=%d", subscriptionID)
 
+	// 记录 API 调用日志
+	if c.Storage != nil {
+		c.Storage.AddSystemLog("info", fmt.Sprintf("调用 88code API: 重置订阅额度 (订阅ID=%d)", subscriptionID))
+	}
+
 	respBody, err := c.makeRequest("POST", endpoint, nil)
 	if err != nil {
+		if c.Storage != nil {
+			c.Storage.AddSystemLog("error", fmt.Sprintf("88code API 调用失败: 重置订阅ID=%d - %v", subscriptionID, err))
+		}
 		return nil, err
 	}
 
@@ -239,6 +283,9 @@ func (c *Client) ResetCredits(subscriptionID int) (*models.ResetResponse, error)
 	}
 
 	if err := json.Unmarshal(respBody, &adminResp); err != nil {
+		if c.Storage != nil {
+			c.Storage.AddSystemLog("error", fmt.Sprintf("88code API 响应解析失败: 订阅ID=%d - %v", subscriptionID, err))
+		}
 		return nil, fmt.Errorf("解析重置响应失败: %w", err)
 	}
 
@@ -246,12 +293,21 @@ func (c *Client) ResetCredits(subscriptionID int) (*models.ResetResponse, error)
 	if !adminResp.OK {
 		// 检查特定的错误码
 		if adminResp.Code == 30001 {
+			if c.Storage != nil {
+				c.Storage.AddSystemLog("warning", fmt.Sprintf("88code API 重置受限: 订阅ID=%d - %s (今日已重置或时间间隔不足5小时)", subscriptionID, adminResp.Msg))
+			}
 			return nil, fmt.Errorf("重置失败: %s (今日已重置或时间间隔不足5小时)", adminResp.Msg)
+		}
+		if c.Storage != nil {
+			c.Storage.AddSystemLog("error", fmt.Sprintf("88code API 重置失败: 订阅ID=%d - %s (错误码: %d)", subscriptionID, adminResp.Msg, adminResp.Code))
 		}
 		return nil, fmt.Errorf("重置失败: %s (错误码: %d)", adminResp.Msg, adminResp.Code)
 	}
 
 	logger.Info("重置成功: %s", adminResp.Msg)
+	if c.Storage != nil {
+		c.Storage.AddSystemLog("success", fmt.Sprintf("88code API 调用成功: 订阅ID=%d 重置完成 - %s", subscriptionID, adminResp.Msg))
+	}
 
 	// 构造兼容的返回格式
 	return &models.ResetResponse{

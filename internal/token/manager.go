@@ -14,15 +14,22 @@ import (
 
 // Manager Token 管理器
 type Manager struct {
-	storage *Storage
-	baseURL string
+	storage       *Storage
+	baseURL       string
+	systemStorage SystemStorage // 用于记录系统日志
+}
+
+// SystemStorage 系统存储接口
+type SystemStorage interface {
+	AddSystemLog(logType, message string) error
 }
 
 // NewManager 创建 Token 管理器
-func NewManager(storage *Storage, baseURL string) *Manager {
+func NewManager(storage *Storage, baseURL string, systemStorage SystemStorage) *Manager {
 	return &Manager{
-		storage: storage,
-		baseURL: baseURL,
+		storage:       storage,
+		baseURL:       baseURL,
+		systemStorage: systemStorage,
 	}
 }
 
@@ -30,6 +37,9 @@ func NewManager(storage *Storage, baseURL string) *Manager {
 func (m *Manager) AddToken(apiKey, name string) (*models.Token, error) {
 	// 验证 API Key
 	client := api.NewClient(m.baseURL, apiKey, nil)
+	if m.systemStorage != nil {
+		client.Storage = m.systemStorage
+	}
 
 	// 获取订阅详情
 	subs, err := client.GetSubscriptions()
@@ -92,6 +102,9 @@ func (m *Manager) RefreshSubscription(tokenID string) (*models.Token, error) {
 
 	// 获取最新订阅信息
 	client := api.NewClient(m.baseURL, token.APIKey, nil)
+	if m.systemStorage != nil {
+		client.Storage = m.systemStorage
+	}
 	subs, err := client.GetSubscriptions()
 	if err != nil {
 		return nil, fmt.Errorf("获取订阅失败: %w", err)
@@ -144,6 +157,9 @@ func (m *Manager) ResetToken(tokenID string, resetType string, thresholdPercent 
 
 	// 创建 API 客户端
 	client := api.NewClient(m.baseURL, token.APIKey, nil)
+	if m.systemStorage != nil {
+		client.Storage = m.systemStorage
+	}
 
 	// 获取最新订阅信息
 	subs, err := client.GetSubscriptions()

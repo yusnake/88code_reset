@@ -94,7 +94,7 @@ func runWebMode(store *storage.Storage) {
 		os.Exit(1)
 	}
 
-	tokenMgr := token.NewManager(tokenStorage, *baseURL)
+	tokenMgr := token.NewManager(tokenStorage, *baseURL, store)
 
 	// 创建 Web 服务器
 	port := *webPort
