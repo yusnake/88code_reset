@@ -329,11 +329,11 @@
         </header>
 
         <!-- 主页内容 -->
-        <div id="page-dashboard" class="max-w-7xl mx-auto px-6 lg:px-8 py-8 space-y-8">
+        <div id="page-dashboard" class="max-w-7xl mx-auto px-6 lg:px-8 py-6 space-y-6">
             <!-- 系统状态 -->
-            <div class="bg-white rounded-3xl shadow-soft-lg p-8 card-hover border border-gray-100/50">
+            <div class="bg-white rounded-2xl shadow-soft-lg p-5 card-hover border border-gray-100/50">
                 <!-- 标题 -->
-                <div class="flex items-center gap-3 mb-8">
+                <div class="flex items-center gap-3 mb-5">
                     <div class="w-1.5 h-10 gradient-blue rounded-full"></div>
                     <div>
                         <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-3">
@@ -352,64 +352,64 @@
 
                 <!-- 状态卡片 -->
                 <div id="status-content" class="hidden">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <!-- 当前时间 -->
-                        <div class="group relative bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-2xl p-6 border-2 border-blue-200/50 hover:border-blue-300 transition-all duration-300 hover:shadow-lg overflow-hidden">
-                            <div class="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -mr-16 -mt-16"></div>
+                        <div class="group relative bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl p-4 border-2 border-blue-200/50 hover:border-blue-300 transition-all duration-300 hover:shadow-lg overflow-hidden">
+                            <div class="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full -mr-12 -mt-12"></div>
                             <div class="relative">
-                                <div class="flex items-center justify-between mb-4">
-                                    <div class="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                                        <i class="fas fa-clock text-white text-2xl"></i>
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                                        <i class="fas fa-clock text-white text-lg"></i>
                                     </div>
-                                    <span class="text-xs font-bold text-blue-600 bg-blue-200/50 px-3 py-1.5 rounded-full">实时</span>
+                                    <span class="text-xs font-bold text-blue-600 bg-blue-200/50 px-2 py-1 rounded-full">实时</span>
                                 </div>
-                                <div class="text-sm text-blue-700 font-semibold mb-2 uppercase tracking-wide">当前时间</div>
-                                <div id="current-time" class="text-2xl font-bold text-blue-900">--:--:--</div>
+                                <div class="text-xs text-blue-700 font-semibold mb-1 uppercase tracking-wide">当前时间</div>
+                                <div id="current-time" class="text-xl font-bold text-blue-900">--:--:--</div>
                             </div>
                         </div>
 
                         <!-- 下次重置 -->
-                        <div class="group relative bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-2xl p-6 border-2 border-emerald-200/50 hover:border-emerald-300 transition-all duration-300 hover:shadow-lg overflow-hidden">
-                            <div class="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16"></div>
+                        <div class="group relative bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-xl p-4 border-2 border-emerald-200/50 hover:border-emerald-300 transition-all duration-300 hover:shadow-lg overflow-hidden">
+                            <div class="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -mr-12 -mt-12"></div>
                             <div class="relative">
-                                <div class="flex items-center justify-between mb-4">
-                                    <div class="w-14 h-14 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                                        <i class="fas fa-sync-alt text-white text-2xl"></i>
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                                        <i class="fas fa-sync-alt text-white text-lg"></i>
                                     </div>
-                                    <span class="text-xs font-bold text-emerald-600 bg-emerald-200/50 px-3 py-1.5 rounded-full">下次</span>
+                                    <span class="text-xs font-bold text-emerald-600 bg-emerald-200/50 px-2 py-1 rounded-full">下次</span>
                                 </div>
-                                <div class="text-sm text-emerald-700 font-semibold mb-2 uppercase tracking-wide">下次重置</div>
-                                <div id="next-reset" class="text-2xl font-bold text-emerald-900">--:--</div>
+                                <div class="text-xs text-emerald-700 font-semibold mb-1 uppercase tracking-wide">下次重置</div>
+                                <div id="next-reset" class="text-xl font-bold text-emerald-900">--:--</div>
                             </div>
                         </div>
 
                         <!-- Token 总数 -->
-                        <div class="group relative bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-2xl p-6 border-2 border-purple-200/50 hover:border-purple-300 transition-all duration-300 hover:shadow-lg overflow-hidden">
-                            <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full -mr-16 -mt-16"></div>
+                        <div class="group relative bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl p-4 border-2 border-purple-200/50 hover:border-purple-300 transition-all duration-300 hover:shadow-lg overflow-hidden">
+                            <div class="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full -mr-12 -mt-12"></div>
                             <div class="relative">
-                                <div class="flex items-center justify-between mb-4">
-                                    <div class="w-14 h-14 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                                        <i class="fas fa-key text-white text-2xl"></i>
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                                        <i class="fas fa-key text-white text-lg"></i>
                                     </div>
-                                    <span class="text-xs font-bold text-purple-600 bg-purple-200/50 px-3 py-1.5 rounded-full">总计</span>
+                                    <span class="text-xs font-bold text-purple-600 bg-purple-200/50 px-2 py-1 rounded-full">总计</span>
                                 </div>
-                                <div class="text-sm text-purple-700 font-semibold mb-2 uppercase tracking-wide">Token 总数</div>
-                                <div id="total-tokens" class="text-2xl font-bold text-purple-900">0</div>
+                                <div class="text-xs text-purple-700 font-semibold mb-1 uppercase tracking-wide">Token 总数</div>
+                                <div id="total-tokens" class="text-xl font-bold text-purple-900">0</div>
                             </div>
                         </div>
 
                         <!-- 已启用 Token -->
-                        <div class="group relative bg-gradient-to-br from-amber-50 to-amber-100/50 rounded-2xl p-6 border-2 border-amber-200/50 hover:border-amber-300 transition-all duration-300 hover:shadow-lg overflow-hidden">
-                            <div class="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16"></div>
+                        <div class="group relative bg-gradient-to-br from-amber-50 to-amber-100/50 rounded-xl p-4 border-2 border-amber-200/50 hover:border-amber-300 transition-all duration-300 hover:shadow-lg overflow-hidden">
+                            <div class="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full -mr-12 -mt-12"></div>
                             <div class="relative">
-                                <div class="flex items-center justify-between mb-4">
-                                    <div class="w-14 h-14 bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                                        <i class="fas fa-check-circle text-white text-2xl"></i>
+                                <div class="flex items-center justify-between mb-3">
+                                    <div class="w-10 h-10 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                                        <i class="fas fa-check-circle text-white text-lg"></i>
                                     </div>
-                                    <span class="text-xs font-bold text-amber-600 bg-amber-200/50 px-3 py-1.5 rounded-full">启用</span>
+                                    <span class="text-xs font-bold text-amber-600 bg-amber-200/50 px-2 py-1 rounded-full">启用</span>
                                 </div>
-                                <div class="text-sm text-amber-700 font-semibold mb-2 uppercase tracking-wide">已启用</div>
-                                <div id="enabled-tokens" class="text-2xl font-bold text-amber-900">0</div>
+                                <div class="text-xs text-amber-700 font-semibold mb-1 uppercase tracking-wide">已启用</div>
+                                <div id="enabled-tokens" class="text-xl font-bold text-amber-900">0</div>
                             </div>
                         </div>
                     </div>
@@ -417,9 +417,9 @@
             </div>
 
             <!-- 重置配置 -->
-            <div class="bg-white rounded-3xl shadow-soft-lg p-8 card-hover border border-gray-100/50">
+            <div class="bg-white rounded-2xl shadow-soft-lg p-5 card-hover border border-gray-100/50">
                 <!-- 标题 -->
-                <div class="flex items-center gap-3 mb-8">
+                <div class="flex items-center gap-3 mb-5">
                     <div class="w-1.5 h-10 gradient-purple rounded-full"></div>
                     <div>
                         <h2 class="text-2xl font-bold text-gray-800 flex items-center gap-3">
@@ -581,9 +581,9 @@
             </div>
 
             <!-- Token 管理 -->
-            <div class="bg-white rounded-3xl shadow-soft-lg p-8 card-hover border border-gray-100/50">
+            <div class="bg-white rounded-2xl shadow-soft-lg p-5 card-hover border border-gray-100/50">
                 <!-- 标题和操作栏 -->
-                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6">
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-5 gap-4">
                     <div class="flex items-center gap-3">
                         <div class="w-1.5 h-10 bg-gradient-to-b from-blue-500 to-purple-600 rounded-full"></div>
                         <div>
@@ -1311,19 +1311,33 @@
                 }
 
                 return `
-                    <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-5 border-l-4 border-${statusColor}-500 hover-lift">
+                    <div class="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-4 border-l-4 border-${statusColor}-500 hover-lift">
                         <!-- 标题和按钮行 -->
-                        <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+                        <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
                             <div class="flex items-center gap-3">
                                 <div class="w-10 h-10 bg-${statusColor}-500 rounded-xl flex items-center justify-center">
                                     <i class="fas fa-${enabled ? 'check' : 'times'} text-white"></i>
                                 </div>
                                 <div>
-                                    <h3 class="text-lg font-bold text-gray-800">${displayName}</h3>
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${statusColor}-100 text-${statusColor}-700">
-                                        <i class="fas fa-circle text-${statusColor}-400 mr-1.5" style="font-size: 6px;"></i>
-                                        ${statusText}
-                                    </span>
+                                    <div class="flex items-center gap-2">
+                                        <h3 class="text-lg font-bold text-gray-800">${displayName}</h3>
+                                        <button
+                                            onclick="toggleApiKey('${token.id}')"
+                                            class="text-gray-400 hover:text-blue-600 transition-colors duration-200"
+                                            title="显示/隐藏 API Key"
+                                        >
+                                            <i class="fas fa-eye text-sm" id="eye-icon-${token.id}"></i>
+                                        </button>
+                                    </div>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${statusColor}-100 text-${statusColor}-700">
+                                            <i class="fas fa-circle text-${statusColor}-400 mr-1.5" style="font-size: 6px;"></i>
+                                            ${statusText}
+                                        </span>
+                                    </div>
+                                    <div id="apikey-${token.id}" class="hidden mt-2 bg-gray-800 text-gray-100 px-3 py-2 rounded-lg font-mono text-xs break-all">
+                                        ${token.api_key || 'N/A'}
+                                    </div>
                                 </div>
                             </div>
                             <div class="flex gap-2 ml-auto">
@@ -1348,29 +1362,29 @@
 
                         <!-- 订阅信息 -->
                         ${sub ? `
-                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                                <div class="bg-white/70 rounded-lg p-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
+                                <div class="bg-white/70 rounded-lg p-2">
                                     <div class="text-xs text-gray-500 mb-1 flex items-center gap-1">
                                         <i class="fas fa-user"></i>
                                         用户
                                     </div>
                                     <div class="text-sm font-medium text-gray-800">${sub.user_name || '--'}</div>
                                 </div>
-                                <div class="bg-white/70 rounded-lg p-3">
+                                <div class="bg-white/70 rounded-lg p-2">
                                     <div class="text-xs text-gray-500 mb-1 flex items-center gap-1">
                                         <i class="fas fa-crown"></i>
                                         套餐
                                     </div>
                                     <div class="text-sm font-medium text-gray-800">${sub.subscription_name || '--'}</div>
                                 </div>
-                                <div class="bg-white/70 rounded-lg p-3">
+                                <div class="bg-white/70 rounded-lg p-2">
                                     <div class="text-xs text-gray-500 mb-1 flex items-center gap-1">
                                         <i class="fas fa-tag"></i>
                                         备注
                                     </div>
                                     <div class="text-sm font-medium text-gray-800">${token.name}</div>
                                 </div>
-                                <div class="bg-white/70 rounded-lg p-3">
+                                <div class="bg-white/70 rounded-lg p-2">
                                     <div class="text-xs text-gray-500 mb-1 flex items-center gap-1">
                                         <i class="fas fa-redo"></i>
                                         重置次数
@@ -1379,7 +1393,7 @@
                                 </div>
                             </div>
 
-                            <div class="bg-white/70 rounded-lg p-3">
+                            <div class="bg-white/70 rounded-lg p-2">
                                 <div class="flex justify-between items-center mb-2">
                                     <span class="text-sm text-gray-600 flex items-center gap-1">
                                         <i class="fas fa-chart-pie"></i>
@@ -1630,6 +1644,21 @@
                     addLog(`Token 切换状态失败: ${tokenId} - ${err.message}`, 'error');
                     console.error('操作失败:', err.message);
                 });
+        }
+
+        function toggleApiKey(tokenId) {
+            const apikeyDiv = document.getElementById(`apikey-${tokenId}`);
+            const eyeIcon = document.getElementById(`eye-icon-${tokenId}`);
+
+            if (apikeyDiv.classList.contains('hidden')) {
+                apikeyDiv.classList.remove('hidden');
+                eyeIcon.classList.remove('fa-eye');
+                eyeIcon.classList.add('fa-eye-slash');
+            } else {
+                apikeyDiv.classList.add('hidden');
+                eyeIcon.classList.remove('fa-eye-slash');
+                eyeIcon.classList.add('fa-eye');
+            }
         }
 
         function deleteToken(tokenId, name) {
